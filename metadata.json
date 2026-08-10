@@ -1,0 +1,6 @@
+{
+  "name": "Team Project Portfolio Dashboard",
+  "description": "Centralized platform to showcase and manage team software projects with role-based JWT auth, date range filtering, tech stack analytics, admin CRUD operations, and comprehensive REST API documentation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
