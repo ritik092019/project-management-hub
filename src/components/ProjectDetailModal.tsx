@@ -7,6 +7,7 @@ import { ReviewSection } from './ReviewSection.js';
 import { ActivityTimeline } from './ActivityTimeline.js';
 import { LowLatencySummaryButton } from './LowLatencySummaryButton.js';
 import { fetchUsers } from '../services/api.js';
+import { ProjectResourcesTab } from './ProjectResourcesTab.js';
 import {
   X,
   Calendar,
@@ -22,7 +23,8 @@ import {
   Edit3,
   Trash2,
   MessageSquare,
-  History
+  History,
+  FolderGit2
 } from 'lucide-react';
 
 interface ProjectDetailModalProps {
@@ -42,7 +44,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
   onDelete,
   onProjectUpdated
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'comments' | 'reviews' | 'activity'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'resources' | 'comments' | 'reviews' | 'activity'>('overview');
   const [usersList, setUsersList] = useState<User[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(project);
 
@@ -166,6 +168,18 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
           >
             <FileText className="w-4 h-4" />
             <span>Overview & Spec</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('resources')}
+            className={`flex items-center gap-2 px-4 py-2.5 font-bold text-xs border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'resources'
+                ? 'border-emerald-500 text-emerald-400 bg-slate-900/60 rounded-t-xl'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <FolderGit2 className="w-4 h-4" />
+            <span>Resources & GitHub</span>
           </button>
 
           <button
@@ -344,6 +358,10 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                 </div>
               </div>
             </div>
+          )}
+
+          {activeTab === 'resources' && (
+            <ProjectResourcesTab project={currentProject} currentUser={currentUser} />
           )}
 
           {activeTab === 'comments' && (

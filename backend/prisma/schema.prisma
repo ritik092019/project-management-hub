@@ -1,0 +1,325 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  SUPERVISOR
+  DEVELOPER
+  VIEWER
+}
+
+enum ProjectStatus {
+  DEPLOYED
+  IN_PROGRESS
+  TESTING
+  MAINTENANCE
+  ARCHIVED
+}
+
+enum ApprovalStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  PENDING_REVIEW
+  CHANGES_REQUESTED
+  RESUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ProjectCategory {
+  WEB_APP
+  MOBILE_APP
+  MICROSERVICE
+  AI_ML
+  DEV_TOOLS
+  INFRASTRUCTURE
+  OTHER
+}
+
+enum NotificationType {
+  COMMENT
+  REPLY
+  MENTION
+  SUBMISSION
+  SUPERVISOR_FEEDBACK
+  APPROVAL
+  REJECTION
+  CHANGES_REQUESTED
+  RESUBMISSION
+  ASSIGNMENT
+  PROJECT_UPDATE
+}
+
+enum ResourceType {
+  SCREENSHOT
+  ARCHITECTURE_DIAGRAM
+  DOCUMENTATION
+  PRESENTATION
+  DEMO_VIDEO
+  OTHER
+}
+
+model User {
+  id                    String            @id @default(uuid())
+  email                 String            @unique
+  name                  String
+  passwordHash          String?
+  role                  UserRole          @default(DEVELOPER)
+  avatar                String?
+  department            String?
+  title                 String?
+  isActive              Boolean           @default(true)
+  refreshTokenHash      String?
+  resetTokenHash        String?
+  resetTokenExpires     DateTime?
+  teamId                String?
+  team                  Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  ownedProjects         Project[]         @relation("ProjectOwner")
+  supervisedProjects    Project[]         @relation("ProjectSupervisor")
+  comments              Comment[]         @relation("CommentAuthor")
+  reviews               ProjectReview[]   @relation("ReviewSupervisor")
+  approvalHistory       ApprovalHistory[] @relation("ApprovalActor")
+  activities            ActivityLog[]     @relation("ActivityActor")
+  receivedNotifications Notification[]    @relation("NotificationRecipient")
+  actedNotifications    Notification[]    @relation("NotificationActor")
+  uploadedResources     ProjectResource[] @relation("ResourceUploader")
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([email])
+  @@index([role])
+  @@index([teamId])
+  @@map("users")
+}
+
+model Team {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  department  String?
+  members     User[]
+  projects    Project[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([name])
+  @@map("teams")
+}
+
+model Technology {
+  id                  String              @id @default(uuid())
+  name                String              @unique
+  category            String?
+  icon                String?
+  projectTechnologies ProjectTechnology[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([name])
+  @@map("technologies")
+}
+
+model Project {
+  id                     String              @id @default(uuid())
+  name                   String
+  summary                String?
+  description            String
+  category               ProjectCategory     @default(WEB_APP)
+  ownerId                String
+  owner                  User                @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  supervisorId           String?
+  supervisor             User?               @relation("ProjectSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+  teamId                 String?
+  team                   Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  status                 ProjectStatus       @default(IN_PROGRESS)
+  approvalStatus         ApprovalStatus      @default(PENDING_REVIEW)
+  priority               Priority            @default(MEDIUM)
+  deploymentDate         DateTime?
+  expectedCompletionDate DateTime?
+  actualCompletionDate   DateTime?
+  githubUrl              String?
+  liveUrl                String?
+  demoUrl                String?
+  docsUrl                String?
+  documentationUrl       String?
+  testCoverage           Float               @default(0)
+  linesOfCode            Int                 @default(0)
+  imageUrl               String?
+  thumbnail              String?
+  architectureUrl        String?
+  technologies           ProjectTechnology[]
+  comments               Comment[]
+  reviews                ProjectReview[]
+  approvalHistory        ApprovalHistory[]
+  activities             ActivityLog[]
+  notifications          Notification[]
+  resources              ProjectResource[]
+  githubCaches           GithubCache[]
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  @@index([name])
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+  @@index([approvalStatus])
+  @@index([ownerId])
+  @@index([supervisorId])
+  @@index([teamId])
+  @@index([deploymentDate])
+  @@index([createdAt])
+  @@map("projects")
+}
+
+model ProjectTechnology {
+  projectId    String
+  project      Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  technologyId String
+  technology   Technology @relation(fields: [technologyId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, technologyId])
+  @@index([projectId])
+  @@index([technologyId])
+  @@map("project_technologies")
+}
+
+model Comment {
+  id        String    @id @default(uuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User      @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  parentId  String?
+  parent    Comment?  @relation("ThreadedReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("ThreadedReplies")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([projectId])
+  @@index([authorId])
+  @@index([parentId])
+  @@map("comments")
+}
+
+model ProjectReview {
+  id                   String         @id @default(uuid())
+  projectId            String
+  project              Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supervisorId         String
+  supervisor           User           @relation("ReviewSupervisor", fields: [supervisorId], references: [id], onDelete: Cascade)
+  approvalStatus       ApprovalStatus
+  feedbackText         String
+  rating               Int?           @default(5)
+  changesRequestedList String? // JSON string array of changes
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([projectId])
+  @@index([supervisorId])
+  @@map("project_reviews")
+}
+
+model ApprovalHistory {
+  id         String         @id @default(uuid())
+  projectId  String
+  project    Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actorId    String
+  actor      User           @relation("ApprovalActor", fields: [actorId], references: [id], onDelete: Cascade)
+  fromStatus ApprovalStatus
+  toStatus   ApprovalStatus
+  notes      String?
+  createdAt  DateTime       @default(now())
+
+  @@index([projectId])
+  @@index([actorId])
+  @@map("approval_history")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actorId     String
+  actor       User     @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
+  type        String // 'COMMENT', 'REVIEW', 'APPROVAL_CHANGE', 'STATUS_CHANGE', 'PROJECT_EDIT', 'MENTION'
+  description String
+  details     String?
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([actorId])
+  @@map("activity_logs")
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String
+  recipient   User             @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actorId     String?
+  actor       User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  type        NotificationType
+  title       String
+  message     String
+  projectId   String?
+  project     Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  isRead      Boolean          @default(false)
+  metadata    String? // Optional JSON string metadata
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([recipientId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model ProjectResource {
+  id           String       @id @default(uuid())
+  projectId    String
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploaderId   String
+  uploader     User         @relation("ResourceUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
+  type         ResourceType @default(OTHER)
+  filename     String       // sanitised storage filename
+  originalName String       // original upload filename
+  mimeType     String
+  sizeBytes    Int          @default(0)
+  storageUrl   String       // public CDN / download URL
+  publicId     String?      // Cloudinary public_id for deletion
+  description  String?
+  isPublic     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([projectId])
+  @@index([uploaderId])
+  @@index([type])
+  @@map("project_resources")
+}
+
+model GithubCache {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repoUrl   String
+  data      String   // JSON string of fetched repo data
+  fetchedAt DateTime @default(now())
+
+  @@unique([projectId])
+  @@index([repoUrl])
+  @@map("github_cache")
+}

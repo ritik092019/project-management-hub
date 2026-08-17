@@ -37,6 +37,7 @@ import { ThemeCustomizerModal } from './components/ThemeCustomizerModal.tsx';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal.tsx';
 import { GeminiChatbotModal } from './components/GeminiChatbotModal.tsx';
 import { VoiceConversationModal } from './components/VoiceConversationModal.tsx';
+import { OfflineBanner } from './components/OfflineBanner.tsx';
 
 import { Layers, Plus, FolderKanban, ShieldCheck, AlertCircle, Sparkles, RefreshCw, Calendar, Cpu, Command, ShieldAlert, Lock, UserCheck, Kanban } from 'lucide-react';
 
@@ -778,6 +779,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <ToastProvider>
+        <OfflineBanner />
         <AppContent />
       </ToastProvider>
     </ThemeProvider>

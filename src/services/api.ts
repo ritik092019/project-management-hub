@@ -1,4 +1,4 @@
-import { Project, ProjectFilterParams, DashboardAnalytics, User, ApiTestSummary, Comment, ReviewNote, ActivityItem, Notification, ApprovalStatus } from '../types.js';
+import { Project, ProjectFilterParams, DashboardAnalytics, User, ApiTestSummary, Comment, ReviewNote, ActivityItem, Notification, ApprovalStatus, ProjectResource, GithubRepoInfo, ResourceType } from '../types.js';
 
 const API_BASE = '/api';
 
@@ -215,6 +215,37 @@ export async function getCurrentUser(): Promise<User | null> {
   }
 }
 
+function normalizeProject(p: any): Project {
+  if (!p) return {} as Project;
+  return {
+    id: p.id,
+    name: p.name || '',
+    summary: p.summary || p.description?.substring(0, 150) || '',
+    description: p.description || '',
+    owner: typeof p.owner === 'object' ? p.owner.name : (p.owner || 'Unassigned'),
+    ownerEmail: p.ownerEmail || p.ownerDetails?.email || p.owner?.email || '',
+    supervisor: typeof p.supervisor === 'object' ? p.supervisor.name : (p.supervisor || 'Unassigned'),
+    supervisorEmail: p.supervisorEmail || p.supervisorDetails?.email || p.supervisor?.email || '',
+    deploymentDate: p.deploymentDate ? (typeof p.deploymentDate === 'string' ? p.deploymentDate.split('T')[0] : new Date(p.deploymentDate).toISOString().split('T')[0]) : '',
+    status: p.status || 'IN_PROGRESS',
+    approvalStatus: p.approvalStatus || 'PENDING_REVIEW',
+    techStack: p.techStack || (p.technologies ? p.technologies.map((t: any) => t.technology?.name || t.name).filter(Boolean) : []),
+    links: {
+      github: p.links?.github || p.githubUrl || undefined,
+      live: p.links?.live || p.liveUrl || undefined,
+      demo: p.links?.demo || p.demoUrl || undefined,
+      docs: p.links?.docs || p.documentationUrl || p.docsUrl || undefined,
+    },
+    testCoverage: p.testCoverage ?? 0,
+    linesOfCode: p.linesOfCode ?? 0,
+    priority: p.priority || 'MEDIUM',
+    imageUrl: p.imageUrl || p.thumbnail,
+    architectureUrl: p.architectureUrl,
+    createdAt: p.createdAt || new Date().toISOString(),
+    updatedAt: p.updatedAt || new Date().toISOString(),
+  };
+}
+
 export async function fetchProjects(params: ProjectFilterParams = {}): Promise<{ projects: Project[]; total: number; page: number; totalPages: number }> {
   const query = new URLSearchParams();
 
@@ -222,8 +253,14 @@ export async function fetchProjects(params: ProjectFilterParams = {}): Promise<{
   if (params.owner && params.owner !== 'ALL') query.set('owner', params.owner);
   if (params.supervisor && params.supervisor !== 'ALL') query.set('supervisor', params.supervisor);
   if (params.status && params.status !== 'ALL') query.set('status', params.status);
-  if (params.startDate) query.set('startDate', params.startDate);
-  if (params.endDate) query.set('endDate', params.endDate);
+  if (params.startDate) {
+    query.set('startDate', params.startDate);
+    query.set('from', params.startDate);
+  }
+  if (params.endDate) {
+    query.set('endDate', params.endDate);
+    query.set('to', params.endDate);
+  }
   if (params.sortBy) query.set('sortBy', params.sortBy);
   if (params.sortOrder) query.set('sortOrder', params.sortOrder);
   if (params.page) query.set('page', params.page.toString());
@@ -240,7 +277,15 @@ export async function fetchProjects(params: ProjectFilterParams = {}): Promise<{
     throw new Error('Failed to fetch projects');
   }
 
-  return res.json();
+  const json = await res.json();
+  const rawData = json.data || json;
+  const rawProjects = rawData.projects || rawData.items || (Array.isArray(rawData) ? rawData : []);
+  const total = rawData.total ?? rawData.meta?.total ?? rawProjects.length;
+  const page = rawData.page ?? rawData.meta?.page ?? 1;
+  const totalPages = rawData.totalPages ?? rawData.meta?.totalPages ?? 1;
+
+  const projects: Project[] = rawProjects.map((p: any) => normalizeProject(p));
+  return { projects, total, page, totalPages };
 }
 
 export async function createProject(projectData: Partial<Project>): Promise<Project> {
@@ -252,27 +297,31 @@ export async function createProject(projectData: Partial<Project>): Promise<Proj
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Failed to create project' }));
-    throw new Error(err.error || 'Server error creating project');
+    throw new Error(err.error || err.message || 'Server error creating project');
   }
 
-  const data = await res.json();
-  return data.project;
+  const json = await res.json();
+  const data = json.data || json;
+  const project = data.project || data;
+  return normalizeProject(project);
 }
 
 export async function updateProject(id: string, projectData: Partial<Project>): Promise<Project> {
   const res = await fetch(`${API_BASE}/projects/${id}`, {
-    method: 'PUT',
+    method: 'PATCH',
     headers: getAuthHeaders(),
     body: JSON.stringify(projectData)
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Failed to update project' }));
-    throw new Error(err.error || 'Server error updating project');
+    throw new Error(err.error || err.message || 'Server error updating project');
   }
 
-  const data = await res.json();
-  return data.project;
+  const json = await res.json();
+  const data = json.data || json;
+  const project = data.project || data;
+  return normalizeProject(project);
 }
 
 export async function deleteProject(id: string): Promise<void> {
@@ -283,8 +332,41 @@ export async function deleteProject(id: string): Promise<void> {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Failed to delete project' }));
-    throw new Error(err.error || 'Server error deleting project');
+    throw new Error(err.error || err.message || 'Server error deleting project');
   }
+}
+
+export async function submitProjectForReview(id: string): Promise<Project> {
+  const res = await fetch(`${API_BASE}/projects/${id}/submit`, {
+    method: 'POST',
+    headers: getAuthHeaders()
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to submit project for review' }));
+    throw new Error(err.error || err.message || 'Failed to submit project for review');
+  }
+
+  const json = await res.json();
+  const data = json.data || json;
+  return normalizeProject(data.project || data);
+}
+
+export async function updateProjectStatus(id: string, status?: string, approvalStatus?: string): Promise<Project> {
+  const res = await fetch(`${API_BASE}/projects/${id}/status`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ status, approvalStatus })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to update project status' }));
+    throw new Error(err.error || err.message || 'Failed to update project status');
+  }
+
+  const json = await res.json();
+  const data = json.data || json;
+  return normalizeProject(data.project || data);
 }
 
 export async function fetchAnalytics(params: ProjectFilterParams = {}): Promise<DashboardAnalytics> {
@@ -310,6 +392,51 @@ export async function fetchAnalytics(params: ProjectFilterParams = {}): Promise<
     throw new Error('Failed to fetch dashboard analytics');
   }
   return res.json();
+}
+
+export async function fetchAnalyticsDeployments(params: ProjectFilterParams = {}): Promise<any> {
+  const query = new URLSearchParams();
+  if (params.startDate) query.set('startDate', params.startDate);
+  if (params.endDate) query.set('endDate', params.endDate);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE}/analytics/deployments${qs ? '?' + qs : ''}`, { headers: getAuthHeaders() });
+  return res.ok ? res.json() : null;
+}
+
+export async function fetchAnalyticsTechnologies(params: ProjectFilterParams = {}): Promise<any> {
+  const query = new URLSearchParams();
+  if (params.startDate) query.set('startDate', params.startDate);
+  if (params.endDate) query.set('endDate', params.endDate);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE}/analytics/technologies${qs ? '?' + qs : ''}`, { headers: getAuthHeaders() });
+  return res.ok ? res.json() : null;
+}
+
+export async function fetchAnalyticsTeams(params: ProjectFilterParams = {}): Promise<any> {
+  const query = new URLSearchParams();
+  if (params.startDate) query.set('startDate', params.startDate);
+  if (params.endDate) query.set('endDate', params.endDate);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE}/analytics/teams${qs ? '?' + qs : ''}`, { headers: getAuthHeaders() });
+  return res.ok ? res.json() : null;
+}
+
+export async function fetchAnalyticsContributors(params: ProjectFilterParams = {}): Promise<any> {
+  const query = new URLSearchParams();
+  if (params.startDate) query.set('startDate', params.startDate);
+  if (params.endDate) query.set('endDate', params.endDate);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE}/analytics/contributors${qs ? '?' + qs : ''}`, { headers: getAuthHeaders() });
+  return res.ok ? res.json() : null;
+}
+
+export async function fetchAnalyticsCompletionTime(params: ProjectFilterParams = {}): Promise<any> {
+  const query = new URLSearchParams();
+  if (params.startDate) query.set('startDate', params.startDate);
+  if (params.endDate) query.set('endDate', params.endDate);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE}/analytics/completion-time${qs ? '?' + qs : ''}`, { headers: getAuthHeaders() });
+  return res.ok ? res.json() : null;
 }
 
 export async function fetchDevelopers(): Promise<User[]> {
@@ -494,4 +621,81 @@ export async function fetchLowLatencyFlashLite(
 
   return res.json();
 }
+
+// Project Resources & GitHub API Services
+export async function uploadProjectFile(
+  projectId: string,
+  file: File,
+  type?: ResourceType,
+  description?: string
+): Promise<ProjectResource> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (type) formData.append('type', type);
+  if (description) formData.append('description', description);
+
+  const token = getStoredToken();
+  const headers: HeadersInit = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}/v1/files/projects/${projectId}/upload`, {
+    method: 'POST',
+    headers,
+    body: formData
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'Failed to upload project resource' }));
+    throw new Error(err.message || err.error || 'File upload failed');
+  }
+
+  const data = await res.json();
+  return data.data || data;
+}
+
+export async function fetchProjectFiles(projectId: string): Promise<ProjectResource[]> {
+  const res = await fetch(`${API_BASE}/v1/files/projects/${projectId}`, {
+    headers: getAuthHeaders()
+  });
+
+  if (!res.ok) {
+    return [];
+  }
+
+  const data = await res.json();
+  return data.data || data || [];
+}
+
+export async function deleteProjectFile(fileId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/v1/files/${fileId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders()
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'Failed to delete file' }));
+    throw new Error(err.message || err.error || 'Failed to delete file');
+  }
+}
+
+export async function fetchGithubRepoInfo(urlOrProjectId: string): Promise<GithubRepoInfo | null> {
+  let endpoint = `${API_BASE}/v1/github/repo?url=${encodeURIComponent(urlOrProjectId)}`;
+  if (!urlOrProjectId.includes('/') && !urlOrProjectId.includes('.')) {
+    endpoint = `${API_BASE}/v1/github/projects/${urlOrProjectId}/repo`;
+  }
+
+  const res = await fetch(endpoint, {
+    headers: getAuthHeaders()
+  });
+
+  if (!res.ok) {
+    return null;
+  }
+
+  const data = await res.json();
+  return data.data || data;
+}
+
 

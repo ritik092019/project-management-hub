@@ -1,10 +1,49 @@
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
+import https from 'https';
 import path from 'path';
 import jwt from 'jsonwebtoken';
 import { createServer as createViteServer } from 'vite';
 import { Project, User, UserRole, DashboardAnalytics, ProjectStatus, UnitTestResult, ApiTestSummary, ApprovalStatus, Comment, ReviewNote, ActivityItem, Notification } from './src/types.js';
 import { setupGeminiServices } from './server/gemini.js';
+
+const NESTJS_BACKEND_URL = process.env.NESTJS_BACKEND_URL || 'http://localhost:4000';
+const NESTJS_API_PREFIX = 'api/v1';
+
+// Proxy a request to the NestJS backend
+async function proxyToNestJS(
+  req: Request,
+  res: Response,
+  targetPath: string,
+  method?: string,
+  body?: any
+): Promise<void> {
+  const targetUrl = `${NESTJS_BACKEND_URL}/${NESTJS_API_PREFIX}${targetPath}`;
+  const reqMethod = method || req.method;
+
+  try {
+    const fetchModule = await import('node-fetch').catch(() => null);
+    const fetchFn: any = fetchModule ? (fetchModule as any).default || fetchModule : global.fetch;
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const authHeader = req.headers['authorization'];
+    if (authHeader) headers['Authorization'] = authHeader as string;
+
+    const options: any = { method: reqMethod, headers };
+    if (body || (reqMethod !== 'GET' && reqMethod !== 'DELETE' && req.body && Object.keys(req.body).length)) {
+      options.body = JSON.stringify(body !== undefined ? body : req.body);
+    }
+
+    const response = await fetchFn(targetUrl, options);
+    const data = await response.json().catch(() => ({}));
+    return res.status(response.status).json(data) as any;
+  } catch (err: any) {
+    // NestJS backend offline — fall through to legacy handler
+    return res.status(503).json({ error: 'Backend service unavailable. Please start the NestJS backend server.', details: err?.message }) as any;
+  }
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'team-portfolio-super-secret-jwt-key-2026';
 
@@ -84,7 +123,11 @@ const USERS: User[] = [
   }
 ];
 
-// Seed Projects Data
+// ============================================================
+// PROJECTS: No longer backed by in-memory PROJECTS array.
+// All project CRUD is delegated to the NestJS/Prisma backend.
+// A minimal fallback list is kept only for the test runner.
+// ============================================================
 let PROJECTS: Project[] = [
   {
     id: 'proj-101',
@@ -986,396 +1029,139 @@ app.get('/api/supervisors', (req: Request, res: Response) => {
   return res.json({ supervisors: supers });
 });
 
-app.get('/api/tech-stacks', (req: Request, res: Response) => {
-  const stackSet = new Set<string>();
-  PROJECTS.forEach(p => p.techStack.forEach(t => stackSet.add(t)));
-  return res.json({ techStacks: Array.from(stackSet).sort() });
+app.get('/api/tech-stacks', async (req: Request, res: Response) => {
+  try {
+    await proxyToNestJS(req, res, '/technologies');
+  } catch {
+    const stackSet = new Set<string>();
+    PROJECTS.forEach(p => p.techStack.forEach(t => stackSet.add(t)));
+    return res.json({ techStacks: Array.from(stackSet).sort() });
+  }
 });
 
-// 4. GET /api/projects (With Date Range, Search, Owner, Supervisor, Tech, Status Filtering)
-app.get('/api/projects', optionalAuthenticateToken, (req: AuthenticatedRequest, res: Response) => {
-  const {
-    search,
-    owner,
-    supervisor,
-    tech,
-    status,
-    startDate,
-    endDate,
-    sortBy = 'deploymentDate',
-    sortOrder = 'desc',
-    page = '1',
-    limit = '50'
-  } = req.query;
+// ===========================================================
+// PROJECT CRUD ROUTES — Proxied to NestJS/Prisma Backend
+// All project data is now stored in SQLite via Prisma ORM.
+// ===========================================================
 
-  let filtered = [...PROJECTS];
-
-  // Search Filter
-  if (search && typeof search === 'string' && search.trim() !== '') {
-    const term = search.toLowerCase().trim();
-    filtered = filtered.filter(p =>
-      p.name.toLowerCase().includes(term) ||
-      p.summary.toLowerCase().includes(term) ||
-      p.description.toLowerCase().includes(term) ||
-      p.owner.toLowerCase().includes(term) ||
-      p.supervisor.toLowerCase().includes(term) ||
-      p.techStack.some(t => t.toLowerCase().includes(term))
-    );
-  }
-
-  // Owner Filter
-  if (owner && typeof owner === 'string' && owner !== 'ALL') {
-    filtered = filtered.filter(p => p.owner.toLowerCase() === owner.toLowerCase() || p.ownerEmail.toLowerCase() === owner.toLowerCase());
-  }
-
-  // Supervisor Filter
-  if (supervisor && typeof supervisor === 'string' && supervisor !== 'ALL') {
-    filtered = filtered.filter(p => p.supervisor.toLowerCase() === supervisor.toLowerCase() || p.supervisorEmail.toLowerCase() === supervisor.toLowerCase());
-  }
-
-  // Status Filter
-  if (status && typeof status === 'string' && status !== 'ALL') {
-    filtered = filtered.filter(p => p.status.toUpperCase() === status.toUpperCase());
-  }
-
-  // Tech Stack Filter (supports comma-separated string)
-  if (tech && typeof tech === 'string' && tech.trim() !== '' && tech !== 'ALL') {
-    const techArray = tech.split(',').map(t => t.trim().toLowerCase());
-    filtered = filtered.filter(p =>
-      techArray.every(reqTech => p.techStack.some(pTech => pTech.toLowerCase() === reqTech))
-    );
-  }
-
-  // Date Range Filtering on Deployment Date (YYYY-MM-DD)
-  if (startDate && typeof startDate === 'string' && startDate.trim() !== '') {
-    filtered = filtered.filter(p => p.deploymentDate >= startDate);
-  }
-  if (endDate && typeof endDate === 'string' && endDate.trim() !== '') {
-    filtered = filtered.filter(p => p.deploymentDate <= endDate);
-  }
-
-  // Sorting
-  filtered.sort((a, b) => {
-    let valA = (a as any)[sortBy as string];
-    let valB = (b as any)[sortBy as string];
-
-    if (typeof valA === 'string') {
-      valA = valA.toLowerCase();
-      valB = (valB || '').toString().toLowerCase();
-    }
-
-    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  // Pagination
-  const pageNum = parseInt(page as string) || 1;
-  const limitNum = parseInt(limit as string) || 50;
-  const startIndex = (pageNum - 1) * limitNum;
-  const paginatedProjects = filtered.slice(startIndex, startIndex + limitNum);
-
-  return res.json({
-    projects: paginatedProjects,
-    total: filtered.length,
-    page: pageNum,
-    limit: limitNum,
-    totalPages: Math.ceil(filtered.length / limitNum) || 1,
-    filtersApplied: {
-      search,
-      owner,
-      supervisor,
-      tech,
-      status,
-      startDate,
-      endDate
-    }
-  });
+// GET /api/projects — List / search / filter / paginate
+app.get('/api/projects', async (req: Request, res: Response) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  await proxyToNestJS(req, res, `/projects${qs}`);
 });
 
-// 5. GET Single Project by ID
-app.get('/api/projects/:id', (req: Request, res: Response) => {
-  const project = PROJECTS.find(p => p.id === req.params.id);
-  if (!project) {
-    return res.status(404).json({ error: 'Project not found.' });
-  }
-  return res.json({ project });
+// GET /api/projects/:id — Single project by ID
+app.get('/api/projects/:id', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}`);
 });
 
-// 6. POST Create Project (Auth & Role Permission Check)
-app.post('/api/projects', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
-  const currentUser = req.user!;
-  
-  // Role Permission: Admin, Supervisor, or Developer can create projects
-  if (currentUser.role === 'VIEWER') {
-    return res.status(403).json({ error: 'Access Denied: Viewer role cannot create projects.' });
-  }
-
-  const {
-    name,
-    summary,
-    description,
-    owner,
-    ownerEmail,
-    supervisor,
-    supervisorEmail,
-    deploymentDate,
-    status = 'DEPLOYED',
-    techStack = [],
-    links = {},
-    testCoverage = 85,
-    linesOfCode = 10000,
-    priority = 'MEDIUM',
-    architectureUrl,
-    teamMembers = []
-  } = req.body;
-
-  if (!name || !description || !deploymentDate) {
-    return res.status(400).json({ error: 'Missing required project parameters: name, description, and deploymentDate.' });
-  }
-
-  const newProject: Project = {
-    id: `proj-${Date.now()}`,
-    name,
-    summary: summary || description.slice(0, 100) + '...',
-    description,
-    owner: owner || currentUser.name,
-    ownerEmail: ownerEmail || currentUser.email,
-    supervisor: supervisor || 'Dr. Robert Vance',
-    supervisorEmail: supervisorEmail || 'supervisor@team.com',
-    deploymentDate,
-    status,
-    techStack: Array.isArray(techStack) ? techStack : [techStack],
-    links: links || {},
-    testCoverage: Number(testCoverage) || 85,
-    linesOfCode: Number(linesOfCode) || 12000,
-    priority,
-    architectureUrl: architectureUrl || 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80',
-    teamMembers: teamMembers.length > 0 ? teamMembers : [owner || currentUser.name],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  PROJECTS.unshift(newProject);
-  return res.status(201).json({ message: 'Project created successfully', project: newProject });
+// POST /api/projects — Create project
+app.post('/api/projects', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, '/projects', 'POST');
 });
 
-// 7. PUT Update Project
-app.put('/api/projects/:id', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
-  const currentUser = req.user!;
-  const projectIndex = PROJECTS.findIndex(p => p.id === req.params.id);
-
-  if (projectIndex === -1) {
-    return res.status(404).json({ error: 'Project not found.' });
-  }
-
-  const existingProject = PROJECTS[projectIndex];
-
-  // RBAC Permission check
-  if (currentUser.role === 'VIEWER') {
-    return res.status(403).json({ error: 'Access Denied: Viewers cannot edit projects.' });
-  }
-
-  if (currentUser.role === 'DEVELOPER' && existingProject.ownerEmail !== currentUser.email) {
-    return res.status(403).json({ error: 'Access Denied: Developers can only edit their own projects.' });
-  }
-
-  if (currentUser.role === 'SUPERVISOR' && existingProject.supervisorEmail !== currentUser.email && currentUser.email !== 'supervisor@team.com') {
-    return res.status(403).json({ error: 'Access Denied: Supervisors can only edit projects under their supervision.' });
-  }
-
-  const updatedProject: Project = {
-    ...existingProject,
-    ...req.body,
-    id: existingProject.id, // Preserve ID
-    updatedAt: new Date().toISOString()
-  };
-
-  PROJECTS[projectIndex] = updatedProject;
-  return res.json({ message: 'Project updated successfully', project: updatedProject });
+// PUT /api/projects/:id — Update project (full)
+app.put('/api/projects/:id', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}`, 'PATCH');
 });
 
-// 8. DELETE Project
-app.delete('/api/projects/:id', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
-  const currentUser = req.user!;
-  const projectIndex = PROJECTS.findIndex(p => p.id === req.params.id);
+// PATCH /api/projects/:id — Update project (partial)
+app.patch('/api/projects/:id', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}`, 'PATCH');
+});
 
-  if (projectIndex === -1) {
-    return res.status(404).json({ error: 'Project not found.' });
-  }
+// DELETE /api/projects/:id — Delete project
+app.delete('/api/projects/:id', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}`, 'DELETE');
+});
 
-  const existingProject = PROJECTS[projectIndex];
+// POST /api/projects/:id/submit — Submit for review
+app.post('/api/projects/:id/submit', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/submit`, 'POST');
+});
 
-  // RBAC: Only ADMIN, or Supervisor supervising the project, or Owner Developer can delete
-  if (currentUser.role === 'VIEWER') {
-    return res.status(403).json({ error: 'Access Denied: Viewers cannot delete projects.' });
-  }
+// PATCH /api/projects/:id/status — Update project status
+app.patch('/api/projects/:id/status', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/status`, 'PATCH');
+});
 
-  if (currentUser.role === 'DEVELOPER' && existingProject.ownerEmail !== currentUser.email) {
-    return res.status(403).json({ error: 'Access Denied: Developers can only delete their own projects.' });
-  }
+// PATCH /api/projects/:id/supervisor — Assign supervisor
+app.patch('/api/projects/:id/supervisor', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/supervisor`, 'PATCH');
+});
 
-  const deleted = PROJECTS.splice(projectIndex, 1)[0];
-  return res.json({ message: 'Project deleted successfully', project: deleted });
+// PATCH /api/projects/:id/team — Assign team
+app.patch('/api/projects/:id/team', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/team`, 'PATCH');
+});
+
+// POST /api/projects/:id/technologies — Add technologies
+app.post('/api/projects/:id/technologies', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/technologies`, 'POST');
+});
+
+// DELETE /api/projects/:id/technologies/:techId — Remove technology
+app.delete('/api/projects/:id/technologies/:techId', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/technologies/${req.params.techId}`, 'DELETE');
 });
 
 // ==========================================
-// COLLABORATION & REVIEW API ENDPOINTS
+// COLLABORATION & REVIEW API ENDPOINTS — proxied to NestJS
 // ==========================================
 
 // GET Comments for a project
-app.get('/api/projects/:id/comments', (req: Request, res: Response) => {
-  const projectId = req.params.id;
-  const projectComments = COMMENTS.filter(c => c.projectId === projectId);
-  return res.json({ comments: projectComments, total: projectComments.length });
+app.get('/api/projects/:id/comments', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/comments`);
 });
 
 // POST Add Comment or Reply
-app.post('/api/projects/:id/comments', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
-  const currentUser = req.user!;
-  const projectId = req.params.id;
-  const project = PROJECTS.find(p => p.id === projectId);
-
-  if (!project) {
-    return res.status(404).json({ error: 'Project not found' });
-  }
-
-  const { content, parentId } = req.body;
-  if (!content || typeof content !== 'string' || !content.trim()) {
-    return res.status(400).json({ error: 'Comment content cannot be empty.' });
-  }
-
-  const mentions = parseMentionsFromText(content);
-
-  const newComment: Comment = {
-    id: `cmt-${Date.now()}`,
-    projectId,
-    parentId: parentId || null,
-    authorId: currentUser.id,
-    authorName: currentUser.name,
-    authorEmail: currentUser.email,
-    authorRole: currentUser.role,
-    authorAvatar: currentUser.avatar,
-    content: content.trim(),
-    mentions,
-    createdAt: new Date().toISOString()
-  };
-
-  if (parentId) {
-    const parent = COMMENTS.find(c => c.id === parentId && c.projectId === projectId);
-    if (parent) {
-      if (!parent.replies) parent.replies = [];
-      parent.replies.push(newComment);
-    } else {
-      COMMENTS.push(newComment);
-    }
-  } else {
-    COMMENTS.push(newComment);
-  }
-
-  // Create Activity Record
-  const activityItem: ActivityItem = {
-    id: `act-${Date.now()}`,
-    projectId,
-    type: 'COMMENT',
-    actorId: currentUser.id,
-    actorName: currentUser.name,
-    actorAvatar: currentUser.avatar,
-    actorRole: currentUser.role,
-    description: parentId ? `replied to a comment on ${project.name}` : `posted a new comment on ${project.name}`,
-    details: content.trim().length > 80 ? content.trim().substring(0, 80) + '...' : content.trim(),
-    timestamp: new Date().toISOString()
-  };
-  ACTIVITIES.unshift(activityItem);
-
-  // Send Notifications to Mentioned Users
-  mentions.forEach(mentionedName => {
-    const mentionedUser = USERS.find(u => u.name.toLowerCase() === mentionedName.toLowerCase());
-    if (mentionedUser && mentionedUser.email !== currentUser.email) {
-      NOTIFICATIONS.unshift({
-        id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        recipientEmail: mentionedUser.email,
-        recipientId: mentionedUser.id,
-        type: 'MENTION',
-        projectId,
-        projectName: project.name,
-        actorName: currentUser.name,
-        actorAvatar: currentUser.avatar,
-        message: `${currentUser.name} mentioned you in a comment on ${project.name}: "${content.slice(0, 60)}..."`,
-        isRead: false,
-        createdAt: new Date().toISOString()
-      });
-    }
-  });
-
-  // Notify Project Owner & Supervisor
-  [project.ownerEmail, project.supervisorEmail].forEach(email => {
-    if (email && email !== currentUser.email && !mentions.some(m => USERS.find(u => u.name.toLowerCase() === m.toLowerCase())?.email === email)) {
-      NOTIFICATIONS.unshift({
-        id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        recipientEmail: email,
-        type: 'COMMENT',
-        projectId,
-        projectName: project.name,
-        actorName: currentUser.name,
-        actorAvatar: currentUser.avatar,
-        message: `${currentUser.name} commented on ${project.name}`,
-        isRead: false,
-        createdAt: new Date().toISOString()
-      });
-    }
-  });
-
-  return res.status(201).json({ message: 'Comment added successfully', comment: newComment });
+app.post('/api/projects/:id/comments', async (req: AuthenticatedRequest, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/comments`, 'POST', req.body);
 });
 
-// DELETE Comment
-app.delete('/api/comments/:commentId', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
-  const currentUser = req.user!;
-  const commentId = req.params.commentId;
+// PATCH Edit a comment
+app.patch('/api/comments/:commentId', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/comments/${req.params.commentId}`, 'PATCH', req.body);
+});
 
-  let removed = false;
-  const rootIndex = COMMENTS.findIndex(c => c.id === commentId);
-  if (rootIndex !== -1) {
-    const comment = COMMENTS[rootIndex];
-    if (currentUser.role !== 'ADMIN' && comment.authorEmail !== currentUser.email) {
-      return res.status(403).json({ error: 'You can only delete your own comments.' });
-    }
-    COMMENTS.splice(rootIndex, 1);
-    removed = true;
-  } else {
-    for (const root of COMMENTS) {
-      if (root.replies) {
-        const replyIdx = root.replies.findIndex(r => r.id === commentId);
-        if (replyIdx !== -1) {
-          const reply = root.replies[replyIdx];
-          if (currentUser.role !== 'ADMIN' && reply.authorEmail !== currentUser.email) {
-            return res.status(403).json({ error: 'You can only delete your own comments.' });
-          }
-          root.replies.splice(replyIdx, 1);
-          removed = true;
-          break;
-        }
-      }
-    }
-  }
-
-  if (!removed) {
-    return res.status(404).json({ error: 'Comment not found.' });
-  }
-
-  return res.json({ message: 'Comment deleted successfully' });
+// DELETE Delete a comment
+app.delete('/api/comments/:commentId', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/comments/${req.params.commentId}`, 'DELETE');
 });
 
 // GET Reviews for project
-app.get('/api/projects/:id/reviews', (req: Request, res: Response) => {
-  const projectId = req.params.id;
-  const projectReviews = REVIEWS.filter(r => r.projectId === projectId);
-  return res.json({ reviews: projectReviews });
+app.get('/api/projects/:id/reviews', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/reviews`);
 });
 
-// POST Approval Workflow & Review Note Update
-app.post('/api/projects/:id/approval', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+// GET Approval history
+app.get('/api/projects/:id/approval-history', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/approval-history`);
+});
+
+// POST Submit project for review
+app.post('/api/projects/:id/submit', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/submit`, 'POST', req.body);
+});
+
+// POST Resubmit project
+app.post('/api/projects/:id/resubmit', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/resubmit`, 'POST', req.body);
+});
+
+// POST Supervisor review (approve/reject/request-changes)
+app.post('/api/projects/:id/review', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/review`, 'POST', req.body);
+});
+
+// POST Approval Workflow (legacy route → now proxied to /review)
+app.post('/api/projects/:id/approval', async (req: AuthenticatedRequest, res: Response) => {
+  // Map legacy approval body to new review endpoint
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/review`, 'POST', req.body);
+});
+
+// Legacy stub block (kept for backward reference - logic replaced by proxy above)
+const _legacyApprovalStub = (req: AuthenticatedRequest, res: Response) => {
   const currentUser = req.user!;
   const projectId = req.params.id;
   const projectIndex = PROJECTS.findIndex(p => p.id === projectId);
@@ -1451,13 +1237,11 @@ app.post('/api/projects/:id/approval', authenticateToken, (req: AuthenticatedReq
     project,
     reviewNote: newReviewNote
   });
-});
+};
 
 // GET Activity Timeline for project
-app.get('/api/projects/:id/activities', (req: Request, res: Response) => {
-  const projectId = req.params.id;
-  const projectActivities = ACTIVITIES.filter(a => a.projectId === projectId);
-  return res.json({ activities: projectActivities });
+app.get('/api/projects/:id/activities', async (req: Request, res: Response) => {
+  await proxyToNestJS(req, res, `/projects/${req.params.id}/activities`);
 });
 
 // GET User Notifications
@@ -1490,228 +1274,20 @@ app.post('/api/notifications/read-all', optionalAuthenticateToken, (req: Authent
   return res.json({ message: 'All notifications marked as read' });
 });
 
-// 9. GET Analytics Data (Supports Date Range and Category Filters)
-app.get('/api/analytics', (req: Request, res: Response) => {
-  const { startDate, endDate, search, owner, supervisor, tech, status } = req.query;
+// GET/POST/PATCH/DELETE Notifications — Proxied to NestJS Backend
+app.all('/api/notifications*', async (req: Request, res: Response) => {
+  const subPath = req.path.replace('/api/notifications', '');
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  const targetPath = `/notifications${subPath}${qs}`;
+  await proxyToNestJS(req, res, targetPath, req.method, req.body);
+});
 
-  let targetProjects = [...PROJECTS];
-
-  // Apply Date Range Filter
-  if (startDate && typeof startDate === 'string' && startDate.trim() !== '') {
-    targetProjects = targetProjects.filter(p => p.deploymentDate >= startDate);
-  }
-  if (endDate && typeof endDate === 'string' && endDate.trim() !== '') {
-    targetProjects = targetProjects.filter(p => p.deploymentDate <= endDate);
-  }
-
-  // Apply Additional Filters if provided
-  if (search && typeof search === 'string' && search.trim() !== '') {
-    const term = search.toLowerCase().trim();
-    targetProjects = targetProjects.filter(p =>
-      p.name.toLowerCase().includes(term) ||
-      p.summary.toLowerCase().includes(term) ||
-      p.owner.toLowerCase().includes(term) ||
-      p.supervisor.toLowerCase().includes(term) ||
-      p.techStack.some(t => t.toLowerCase().includes(term))
-    );
-  }
-
-  if (owner && typeof owner === 'string' && owner !== 'ALL') {
-    targetProjects = targetProjects.filter(p => p.owner.toLowerCase() === owner.toLowerCase() || p.ownerEmail.toLowerCase() === owner.toLowerCase());
-  }
-
-  if (supervisor && typeof supervisor === 'string' && supervisor !== 'ALL') {
-    targetProjects = targetProjects.filter(p => p.supervisor.toLowerCase() === supervisor.toLowerCase() || p.supervisorEmail.toLowerCase() === supervisor.toLowerCase());
-  }
-
-  if (status && typeof status === 'string' && status !== 'ALL') {
-    targetProjects = targetProjects.filter(p => p.status.toUpperCase() === status.toUpperCase());
-  }
-
-  if (tech && typeof tech === 'string' && tech.trim() !== '' && tech !== 'ALL') {
-    const techArray = tech.split(',').map(t => t.trim().toLowerCase());
-    targetProjects = targetProjects.filter(p =>
-      techArray.every(reqTech => p.techStack.some(pTech => pTech.toLowerCase() === reqTech))
-    );
-  }
-
-  const totalProjects = targetProjects.length;
-  const completedProjects = targetProjects.filter(p => p.status === 'DEPLOYED').length;
-  const activeProjects = targetProjects.filter(p => p.status === 'IN_PROGRESS' || p.status === 'TESTING' || p.status === 'MAINTENANCE').length;
-  const inProgressCount = targetProjects.filter(p => p.status === 'IN_PROGRESS').length;
-  const testingCount = targetProjects.filter(p => p.status === 'TESTING').length;
-  const maintenanceCount = targetProjects.filter(p => p.status === 'MAINTENANCE').length;
-  const archivedCount = targetProjects.filter(p => p.status === 'ARCHIVED').length;
-  const activeDeployments = completedProjects;
-
-  const devSet = new Set(targetProjects.map(p => p.owner));
-  const totalDevelopers = devSet.size;
-
-  const totalCoverage = targetProjects.reduce((acc, p) => acc + p.testCoverage, 0);
-  const avgTestCoverage = totalProjects > 0 ? Math.round(totalCoverage / totalProjects) : 0;
-
-  const totalLinesOfCode = targetProjects.reduce((acc, p) => acc + p.linesOfCode, 0);
-
-  // Average Project Completion Time in Days
-  let totalCompletionDays = 0;
-  let completionCount = 0;
-  targetProjects.forEach(p => {
-    if (p.createdAt && p.deploymentDate) {
-      const createdMs = new Date(p.createdAt).getTime();
-      const deployedMs = new Date(p.deploymentDate).getTime();
-      const diffDays = Math.round((deployedMs - createdMs) / (1000 * 60 * 60 * 24));
-      if (diffDays > 0) {
-        totalCompletionDays += diffDays;
-        completionCount++;
-      }
-    }
-  });
-  const avgCompletionTimeDays = completionCount > 0 ? Math.round(totalCompletionDays / completionCount) : 54;
-
-  // Deployments over time (group by month YYYY-MM)
-  const monthMap: { [key: string]: number } = {};
-  targetProjects.forEach(p => {
-    if (p.deploymentDate) {
-      const monthKey = p.deploymentDate.substring(0, 7); // YYYY-MM
-      monthMap[monthKey] = (monthMap[monthKey] || 0) + 1;
-    }
-  });
-
-  let runningCumulative = 0;
-  const deploymentsOverTime = Object.keys(monthMap)
-    .sort()
-    .map(month => {
-      const [year, m] = month.split('-');
-      const dateObj = new Date(parseInt(year), parseInt(m) - 1, 1);
-      const monthName = dateObj.toLocaleString('en-US', { month: 'short', year: '2-digit' });
-      const monthCount = monthMap[month];
-      runningCumulative += monthCount;
-      return {
-        date: month,
-        monthName,
-        count: monthCount,
-        cumulativeCount: runningCumulative
-      };
-    });
-
-  // Monthly Deployment Trends (% growth rate month-over-month)
-  const deploymentTrends = deploymentsOverTime.map((item, idx) => {
-    const prevCount = idx > 0 ? deploymentsOverTime[idx - 1].count : item.count;
-    const growthRatePct = prevCount > 0 ? Math.round(((item.count - prevCount) / prevCount) * 100) : 0;
-    return {
-      monthName: item.monthName,
-      count: item.count,
-      growthRatePct
-    };
-  });
-
-  // Tech distribution
-  const techMap: { [key: string]: number } = {};
-  targetProjects.forEach(p => {
-    p.techStack.forEach(t => {
-      techMap[t] = (techMap[t] || 0) + 1;
-    });
-  });
-
-  const totalTechOccurrences = Object.values(techMap).reduce((a, b) => a + b, 0) || 1;
-  const techDistribution = Object.keys(techMap)
-    .map(tech => ({
-      tech,
-      count: techMap[tech],
-      percentage: Math.round((techMap[tech] / totalTechOccurrences) * 100)
-    }))
-    .sort((a, b) => b.count - a.count);
-
-  const mostUsedTechStack = techDistribution.slice(0, 6);
-
-  // Status distribution
-  const statusMap: { [key in ProjectStatus]?: number } = {};
-  targetProjects.forEach(p => {
-    statusMap[p.status] = (statusMap[p.status] || 0) + 1;
-  });
-
-  const statusDistribution = (['DEPLOYED', 'IN_PROGRESS', 'TESTING', 'MAINTENANCE', 'ARCHIVED'] as ProjectStatus[]).map(status => ({
-    status,
-    count: statusMap[status] || 0
-  }));
-
-  // Projects per Developer
-  const devMap: { [key: string]: { count: number; loc: number; coverageSum: number } } = {};
-  targetProjects.forEach(p => {
-    if (!devMap[p.owner]) {
-      devMap[p.owner] = { count: 0, loc: 0, coverageSum: 0 };
-    }
-    devMap[p.owner].count += 1;
-    devMap[p.owner].loc += p.linesOfCode;
-    devMap[p.owner].coverageSum += p.testCoverage;
-  });
-
-  const projectsPerDeveloper = Object.keys(devMap).map(dev => ({
-    developer: dev,
-    count: devMap[dev].count
-  })).sort((a, b) => b.count - a.count);
-
-  // Top Contributors List
-  const topContributors = Object.keys(devMap).map(devName => {
-    const matchedUser = USERS.find(u => u.name.toLowerCase() === devName.toLowerCase());
-    const stats = devMap[devName];
-    return {
-      name: devName,
-      avatar: matchedUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-      projectCount: stats.count,
-      linesOfCode: stats.loc,
-      testCoverage: Math.round(stats.coverageSum / (stats.count || 1)),
-      department: matchedUser?.department || 'Engineering'
-    };
-  }).sort((a, b) => b.projectCount - a.projectCount || b.linesOfCode - a.linesOfCode);
-
-  // Projects per Supervisor
-  const superMap: { [key: string]: number } = {};
-  targetProjects.forEach(p => {
-    superMap[p.supervisor] = (superMap[p.supervisor] || 0) + 1;
-  });
-  const projectsPerSupervisor = Object.keys(superMap).map(sup => ({
-    supervisor: sup,
-    count: superMap[sup]
-  })).sort((a, b) => b.count - a.count);
-
-  // Projects per Department
-  const deptMap: { [key: string]: number } = {};
-  targetProjects.forEach(p => {
-    const devUser = USERS.find(u => u.name.toLowerCase() === p.owner.toLowerCase());
-    const dept = devUser?.department || 'Core Engineering';
-    deptMap[dept] = (deptMap[dept] || 0) + 1;
-  });
-  const projectsPerDepartment = Object.keys(deptMap).map(dept => ({
-    department: dept,
-    count: deptMap[dept]
-  })).sort((a, b) => b.count - a.count);
-
-  const analytics: DashboardAnalytics = {
-    totalProjects,
-    completedProjects,
-    activeProjects,
-    inProgressCount,
-    testingCount,
-    maintenanceCount,
-    archivedCount,
-    activeDeployments,
-    totalDevelopers,
-    avgTestCoverage,
-    totalLinesOfCode,
-    avgCompletionTimeDays,
-    deploymentsOverTime,
-    deploymentTrends,
-    techDistribution,
-    mostUsedTechStack,
-    statusDistribution,
-    projectsPerDeveloper,
-    projectsPerSupervisor,
-    projectsPerDepartment,
-    topContributors
-  };
-
-  return res.json(analytics);
+// 9. GET Analytics Data — Proxied to NestJS Backend
+app.get('/api/analytics*', async (req: Request, res: Response) => {
+  const subPath = req.path.replace('/api/analytics', '');
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+  const targetPath = `/analytics${subPath}${qs}`;
+  await proxyToNestJS(req, res, targetPath);
 });
 
 // 10. GET OpenAPI 3.0 Documentation Spec

@@ -14,6 +14,62 @@ export type ProjectStatus = 'DEPLOYED' | 'IN_PROGRESS' | 'TESTING' | 'MAINTENANC
 
 export type ApprovalStatus = 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
 
+export type ResourceType = 'SCREENSHOT' | 'ARCHITECTURE_DIAGRAM' | 'DOCUMENTATION' | 'PRESENTATION' | 'DEMO_VIDEO' | 'OTHER';
+
+export interface ProjectResource {
+  id: string;
+  projectId: string;
+  uploaderId: string;
+  uploader?: {
+    id: string;
+    name: string;
+    email: string;
+    role: UserRole;
+    avatar?: string;
+  };
+  type: ResourceType;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  storageUrl: string;
+  publicId?: string;
+  description?: string;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface GithubRepoInfo {
+  owner: string;
+  name: string;
+  fullName: string;
+  description: string | null;
+  repoUrl: string;
+  defaultBranch: string;
+  stars: number;
+  forks: number;
+  openIssues: number;
+  subscribersCount: number;
+  languages: Record<string, number>;
+  topLanguages: string[];
+  contributors: Array<{
+    login: string;
+    avatarUrl: string;
+    contributions: number;
+    htmlUrl: string;
+  }>;
+  latestCommit: {
+    sha: string;
+    message: string;
+    authorName: string;
+    authorDate: string;
+    url: string;
+  } | null;
+  status: 'ACTIVE' | 'ARCHIVED' | 'DISABLED';
+  cachedAt?: string;
+}
+
 export interface ProjectLinks {
   github?: string;
   live?: string;

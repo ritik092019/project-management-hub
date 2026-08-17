@@ -5,6 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "backend:install": "npm --prefix backend install",
+    "backend:dev": "npm --prefix backend run start:dev",
+    "backend:build": "npm --prefix backend run build",
+    "prisma:generate": "npm --prefix backend run prisma:generate",
+    "prisma:migrate": "npm --prefix backend run prisma:migrate",
+    "prisma:seed": "npm --prefix backend run prisma:seed",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
@@ -26,6 +32,7 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.10.1",
+    "socket.io-client": "^4.8.1",
     "vite": "^6.2.3",
     "ws": "^8.21.2"
   },

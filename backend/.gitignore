@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Production Build
+dist/
+
+# Databases & Prisma
+*.db
+*.db-journal
+prisma/dev.db
+prisma/dev.db-journal
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Logs & Coverage
+*.log
+coverage/
+
+# IDE
+.vscode/
+.idea/
