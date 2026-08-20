@@ -28,20 +28,23 @@ export function getAuthHeaders(): HeadersInit {
 
 // API Calls
 export async function loginUser(email: string, password?: string): Promise<{ token: string; user: User }> {
+  const finalPassword = password && password.trim() ? password : 'Password123!';
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email, password: finalPassword })
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Login failed' }));
-    throw new Error(err.error || 'Failed to authenticate user');
+    const errorMsg = Array.isArray(err.error) ? err.error.join(', ') : (err.message || err.error || 'Failed to authenticate user');
+    throw new Error(errorMsg);
   }
 
-  const data = await res.json();
-  setStoredToken(data.token);
-  return data;
+  const json = await res.json();
+  const result = json.data || json;
+  setStoredToken(result.token);
+  return result;
 }
 
 export async function registerUser(userData: {
@@ -53,23 +56,47 @@ export async function registerUser(userData: {
   department?: string;
   avatar?: string;
 }): Promise<{ token: string; user: User }> {
+  const payload = {
+    ...userData,
+    password: userData.password && userData.password.trim() ? userData.password : 'Password123!'
+  };
+
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(userData)
+    body: JSON.stringify(payload)
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Registration failed' }));
-    throw new Error(err.error || 'Failed to register account');
+    const errorMsg = Array.isArray(err.error) ? err.error.join(', ') : (err.message || err.error || 'Failed to register account');
+    throw new Error(errorMsg);
   }
 
-  const data = await res.json();
-  setStoredToken(data.token);
-  return data;
+  const json = await res.json();
+  const result = json.data || json;
+  setStoredToken(result.token);
+  return result;
 }
 
-export async function resetPassword(email: string, newPassword?: string, resetToken?: string): Promise<{ message: string; resetCode?: string }> {
+export async function requestForgotPassword(email: string): Promise<{ message: string; resetCode?: string }> {
+  const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Forgot password request failed' }));
+    const errorMsg = Array.isArray(err.error) ? err.error.join(', ') : (err.message || err.error || 'Forgot password request failed');
+    throw new Error(errorMsg);
+  }
+
+  const json = await res.json();
+  return json.data || json;
+}
+
+export async function resetPassword(email: string, newPassword: string, resetToken: string): Promise<{ message: string }> {
   const res = await fetch(`${API_BASE}/auth/reset-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -78,10 +105,12 @@ export async function resetPassword(email: string, newPassword?: string, resetTo
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Password reset failed' }));
-    throw new Error(err.error || 'Password reset failed');
+    const errorMsg = Array.isArray(err.error) ? err.error.join(', ') : (err.message || err.error || 'Password reset failed');
+    throw new Error(errorMsg);
   }
 
-  return res.json();
+  const json = await res.json();
+  return json.data || json;
 }
 
 export async function updateProfile(profileData: {
@@ -209,7 +238,7 @@ export async function getCurrentUser(): Promise<User | null> {
       return null;
     }
     const data = await res.json();
-    return data.user;
+    return data.data?.user || data.data || data.user || data;
   } catch (e) {
     return null;
   }

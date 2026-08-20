@@ -97,7 +97,7 @@ function AppContent() {
         setLoading(true);
         let user = await getCurrentUser();
         if (!user) {
-          const authData = await loginUser('admin@team.com');
+          const authData = await loginUser('admin@team.com', 'Password123!');
           user = authData.user;
         }
         setCurrentUser(user);
@@ -121,6 +121,20 @@ function AppContent() {
 
     init();
   }, []);
+
+  // Auto-open selected project when URL contains ?project=... (e.g. launched in a new tab)
+  useEffect(() => {
+    if (projects.length > 0 && typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const projectIdParam = urlParams.get('project');
+      if (projectIdParam && !selectedProject) {
+        const match = projects.find(p => p.id === projectIdParam || p.id.toLowerCase() === projectIdParam.toLowerCase());
+        if (match) {
+          setSelectedProject(match);
+        }
+      }
+    }
+  }, [projects]);
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -202,8 +216,8 @@ function AppContent() {
     });
   };
 
-  const handleLogin = async (email: string) => {
-    const authData = await loginUser(email);
+  const handleLogin = async (email: string, password?: string) => {
+    const authData = await loginUser(email, password);
     setCurrentUser(authData.user);
     showToast({
       title: `Signed in as ${authData.user.name}`,

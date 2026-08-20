@@ -239,26 +239,27 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
 
             {currentUser ? (
-              <div className="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700/80 rounded-xl p-1 pr-1.5">
+              <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/80 rounded-xl p-1 pr-2">
                 <button
                   onClick={onOpenProfile}
-                  className="flex items-center gap-2 hover:bg-slate-700/70 p-1 rounded-lg transition-colors cursor-pointer text-left"
-                  title="View Profile & Role Permissions"
+                  className="flex items-center gap-2.5 hover:bg-slate-700/70 p-1 rounded-lg transition-colors cursor-pointer text-left"
+                  title="View Profile & Security Controls"
                 >
                   <img
-                    src={currentUser.avatar}
+                    src={currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80'}
                     alt={currentUser.name}
-                    className="w-8 h-8 rounded-lg object-cover ring-2 ring-blue-500/50"
+                    className="w-9 h-9 rounded-xl object-cover ring-2 ring-blue-500/50 shadow-md"
                   />
-                  <div className="hidden lg:block text-left text-xs">
-                    <div className="font-semibold text-slate-100 leading-tight">{currentUser.name}</div>
-                    <RoleBadge role={currentUser.role} size="sm" />
+                  <div className="hidden lg:block text-left text-xs min-w-0">
+                    <div className="font-bold text-slate-100 leading-tight truncate max-w-[140px]">{currentUser.name}</div>
+                    <div className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]">{currentUser.email}</div>
+                    <div className="mt-0.5"><RoleBadge role={currentUser.role} size="sm" /></div>
                   </div>
                 </button>
                 <button
                   id="btn-logout"
                   onClick={onLogout}
-                  title="Switch Role / Logout"
+                  title="Sign Out / Switch Account"
                   className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-700/80 rounded-lg transition-colors cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />

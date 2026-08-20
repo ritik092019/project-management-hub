@@ -121,6 +121,26 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={currentProject.links?.live || currentProject.links?.demo || currentProject.links?.github || '#'}
+                target="_blank"
+                rel="noreferrer"
+                onClick={e => {
+                  const targetUrl = currentProject.links?.live || currentProject.links?.demo || currentProject.links?.github;
+                  if (!targetUrl) {
+                    e.preventDefault();
+                    onClose();
+                    onEdit(currentProject);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer group/launch"
+                title={currentProject.links?.live || currentProject.links?.demo ? `Open Running App: ${currentProject.links?.live || currentProject.links?.demo}` : 'Set Live Application URL'}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
+                <span>Launch App</span>
+                <ExternalLink className="w-3.5 h-3.5 group-hover/launch:translate-x-0.5 transition-transform" />
+              </a>
+
               <LowLatencySummaryButton
                 projectId={currentProject.id}
                 projectName={currentProject.name}

@@ -11,6 +11,7 @@
     "prisma:generate": "npm --prefix backend run prisma:generate",
     "prisma:migrate": "npm --prefix backend run prisma:migrate",
     "prisma:seed": "npm --prefix backend run prisma:seed",
+    "prisma:clean": "npm --prefix backend run prisma:clean",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",

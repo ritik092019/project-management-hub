@@ -65,9 +65,21 @@ const GENERIC_PHOTOS = [
   'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1000&q=80'
 ];
 
+const isValidImgUrl = (url?: string): boolean => {
+  if (!url || typeof url !== 'string' || !url.trim()) return false;
+  const trimmed = url.trim();
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('./')
+  );
+};
+
 const getProjectPhoto = (project: Project): string => {
-  if (project.imageUrl && project.imageUrl.trim() !== '') return project.imageUrl;
-  if (project.architectureUrl && project.architectureUrl.trim() !== '') return project.architectureUrl;
+  if (project.imageUrl && isValidImgUrl(project.imageUrl)) return project.imageUrl.trim();
+  if (project.architectureUrl && isValidImgUrl(project.architectureUrl)) return project.architectureUrl.trim();
   if (FALLBACK_PROJECT_PHOTOS[project.id]) return FALLBACK_PROJECT_PHOTOS[project.id];
 
   let hash = 0;
@@ -88,6 +100,13 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
 }) => {
   const { theme, accentClasses } = useTheme();
   const cardRef = useRef<HTMLDivElement>(null);
+
+  // Dynamic Image State with onError Fallback
+  const [imgSrc, setImgSrc] = useState<string>(() => getProjectPhoto(project));
+
+  React.useEffect(() => {
+    setImgSrc(getProjectPhoto(project));
+  }, [project]);
 
   // Motion values for smooth 3D tilt & scale
   const mouseX = useMotionValue(0);
@@ -373,8 +392,14 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
           >
             {/* Main Project View Screenshot */}
             <img
-              src={projectPhoto}
+              src={imgSrc}
               alt={project.name}
+              onError={() => {
+                const fallback = FALLBACK_PROJECT_PHOTOS[project.id] || GENERIC_PHOTOS[0];
+                if (imgSrc !== fallback) {
+                  setImgSrc(fallback);
+                }
+              }}
               className="w-full h-full object-cover transform group-hover/photo:scale-110 transition-transform duration-700 ease-out"
               loading="lazy"
             />
@@ -414,6 +439,21 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
               </div>
 
               <div className="flex items-center gap-1.5">
+                <a
+                  href={project.links?.live || project.links?.demo || project.links?.github || `${window.location.origin}/?project=${project.id}&live=true`}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-950/90 hover:bg-emerald-600 text-emerald-300 hover:text-white backdrop-blur-md border border-emerald-500/60 transition-all shadow-xl flex items-center gap-1.5 text-[11px] font-extrabold shrink-0 cursor-pointer hover:scale-105 group/launch"
+                  title="Launch Project in New Tab"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="hidden sm:inline">Launch App</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-emerald-400 group-hover/launch:text-white group-hover/launch:translate-x-0.5 transition-transform" />
+                </a>
+
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -586,6 +626,21 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
               >
                 <Share2 className="w-3.5 h-3.5" />
               </button>
+
+              <a
+                href={project.links?.live || project.links?.demo || project.links?.github || `${window.location.origin}/?project=${project.id}&live=true`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={e => {
+                  e.stopPropagation();
+                }}
+                className="px-2.5 py-1.5 text-xs font-bold text-emerald-300 bg-emerald-950/80 hover:bg-emerald-600 hover:text-white border border-emerald-500/50 rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer group/launch"
+                title="Launch Running App in New Tab"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span>Launch App</span>
+                <ExternalLink className="w-3 h-3 text-emerald-400 group-hover/launch:text-white group-hover/launch:translate-x-0.5 transition-transform" />
+              </a>
 
               <MagneticButton
                 enableMagnetic={isAnimationEnabled}

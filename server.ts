@@ -17,7 +17,7 @@ async function proxyToNestJS(
   targetPath: string,
   method?: string,
   body?: any
-): Promise<void> {
+): Promise<boolean> {
   const targetUrl = `${NESTJS_BACKEND_URL}/${NESTJS_API_PREFIX}${targetPath}`;
   const reqMethod = method || req.method;
 
@@ -32,16 +32,17 @@ async function proxyToNestJS(
     if (authHeader) headers['Authorization'] = authHeader as string;
 
     const options: any = { method: reqMethod, headers };
-    if (body || (reqMethod !== 'GET' && reqMethod !== 'DELETE' && req.body && Object.keys(req.body).length)) {
+    if (body !== undefined || (reqMethod !== 'GET' && reqMethod !== 'DELETE' && req.body && Object.keys(req.body).length)) {
       options.body = JSON.stringify(body !== undefined ? body : req.body);
     }
 
     const response = await fetchFn(targetUrl, options);
     const data = await response.json().catch(() => ({}));
-    return res.status(response.status).json(data) as any;
+    res.status(response.status).json(data);
+    return true;
   } catch (err: any) {
     // NestJS backend offline — fall through to legacy handler
-    return res.status(503).json({ error: 'Backend service unavailable. Please start the NestJS backend server.', details: err?.message }) as any;
+    return false;
   }
 }
 
@@ -49,7 +50,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'team-portfolio-super-secret-jwt-ke
 
 // Initialize Express App
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Extend Express Request interface for Auth
 export interface AuthenticatedRequest extends Request {
@@ -680,7 +682,10 @@ let SYSTEM_SETTINGS = {
 // REST API ROUTES
 
 // 1. Auth Login
-app.post('/api/auth/login', (req: Request, res: Response) => {
+app.post('/api/auth/login', async (req: Request, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/auth/login', 'POST');
+  if (proxied) return;
+
   const { email, password } = req.body;
   if (!email) {
     return res.status(400).json({ error: 'Email parameter is required.' });
@@ -704,7 +709,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 
   // Issue JWT Token
   const token = jwt.sign(
-    { id: user.id, name: user.name, email: user.email, role: user.role },
+    { id: user.id, sub: user.id, name: user.name, email: user.email, role: user.role },
     JWT_SECRET,
     { expiresIn: `${SYSTEM_SETTINGS.jwtExpirationHours}h` }
   );
@@ -717,7 +722,10 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 });
 
 // 2. Auth Register (New Team Member / Developer / Supervisor)
-app.post('/api/auth/register', (req: Request, res: Response) => {
+app.post('/api/auth/register', async (req: Request, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/auth/register', 'POST');
+  if (proxied) return;
+
   if (!SYSTEM_SETTINGS.allowSelfRegistration) {
     return res.status(403).json({ error: 'Self-registration is currently disabled by System Administrator.' });
   }
@@ -759,7 +767,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
   });
 
   const token = jwt.sign(
-    { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role },
+    { id: newUser.id, sub: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role },
     JWT_SECRET,
     { expiresIn: `${SYSTEM_SETTINGS.jwtExpirationHours}h` }
   );
@@ -771,9 +779,12 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
   });
 });
 
-// 3. Auth Password Reset Request & Execution
-app.post('/api/auth/reset-password', (req: Request, res: Response) => {
-  const { email, resetToken, newPassword } = req.body;
+// 3. Auth Forgot Password Request
+app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/auth/forgot-password', 'POST');
+  if (proxied) return;
+
+  const { email } = req.body;
 
   if (!email) {
     return res.status(400).json({ error: 'Email address is required.' });
@@ -784,26 +795,6 @@ app.post('/api/auth/reset-password', (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Account with given email address was not found.' });
   }
 
-  // If newPassword is supplied, reset it
-  if (newPassword) {
-    if (newPassword.length < SYSTEM_SETTINGS.minPasswordLength) {
-      return res.status(400).json({ error: `Password must be at least ${SYSTEM_SETTINGS.minPasswordLength} characters long.` });
-    }
-
-    AUDIT_LOGS.unshift({
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      action: 'PASSWORD_RESET',
-      actor: user.name,
-      actorRole: user.role,
-      ipAddress: req.ip || '127.0.0.1',
-      details: 'Password was successfully reset.'
-    });
-
-    return res.json({ message: 'Password has been updated successfully. Please log in with your new password.' });
-  }
-
-  // Otherwise generate reset code
   const mockResetCode = Math.floor(100000 + Math.random() * 900000).toString();
 
   AUDIT_LOGS.unshift({
@@ -823,8 +814,48 @@ app.post('/api/auth/reset-password', (req: Request, res: Response) => {
   });
 });
 
+// 4. Auth Password Reset Execution
+app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/auth/reset-password', 'POST');
+  if (proxied) return;
+
+  const { email, resetToken, newPassword } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email address is required.' });
+  }
+
+  const user = USERS.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
+  if (!user) {
+    return res.status(404).json({ error: 'Account with given email address was not found.' });
+  }
+
+  if (!newPassword) {
+    return res.status(400).json({ error: 'New password is required.' });
+  }
+
+  if (newPassword.length < SYSTEM_SETTINGS.minPasswordLength) {
+    return res.status(400).json({ error: `Password must be at least ${SYSTEM_SETTINGS.minPasswordLength} characters long.` });
+  }
+
+  AUDIT_LOGS.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    action: 'PASSWORD_RESET',
+    actor: user.name,
+    actorRole: user.role,
+    ipAddress: req.ip || '127.0.0.1',
+    details: 'Password was successfully reset.'
+  });
+
+  return res.json({ message: 'Password has been updated successfully. Please log in with your new password.' });
+});
+
 // 4. Update Profile
-app.put('/api/auth/profile', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+app.put('/api/auth/profile', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/auth/profile', 'PUT');
+  if (proxied) return;
+
   const currentUser = req.user!;
   const { name, title, department, avatar } = req.body;
 
@@ -845,7 +876,7 @@ app.put('/api/auth/profile', authenticateToken, (req: AuthenticatedRequest, res:
 
   // Issue updated token
   const token = jwt.sign(
-    { id: updatedUser.id, name: updatedUser.name, email: updatedUser.email, role: updatedUser.role },
+    { id: updatedUser.id, sub: updatedUser.id, name: updatedUser.name, email: updatedUser.email, role: updatedUser.role },
     JWT_SECRET,
     { expiresIn: `${SYSTEM_SETTINGS.jwtExpirationHours}h` }
   );
@@ -858,17 +889,26 @@ app.put('/api/auth/profile', authenticateToken, (req: AuthenticatedRequest, res:
 });
 
 // 5. Get Current Authenticated User
-app.get('/api/auth/me', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+app.get('/api/auth/me', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/auth/me', 'GET');
+  if (proxied) return;
+
   return res.json({ user: req.user });
 });
 
 // 6. User Directory & Admin Management Endpoints
-app.get('/api/users', (req: Request, res: Response) => {
+app.get('/api/users', async (req: Request, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/users', 'GET');
+  if (proxied) return;
+
   return res.json({ users: USERS });
 });
 
 // Admin User Creation
-app.post('/api/users', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/users', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/users', 'POST');
+  if (proxied) return;
+
   const currentUser = req.user!;
   if (currentUser.role !== 'ADMIN') {
     return res.status(403).json({ error: 'Access Denied: Only Admins can create user accounts.' });
@@ -910,7 +950,10 @@ app.post('/api/users', authenticateToken, (req: AuthenticatedRequest, res: Respo
 });
 
 // Admin User Role / Info Update
-app.put('/api/users/:id', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+app.put('/api/users/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, `/users/${req.params.id}`, 'PATCH');
+  if (proxied) return;
+
   const currentUser = req.user!;
   if (currentUser.role !== 'ADMIN') {
     return res.status(403).json({ error: 'Access Denied: Only Admins can modify user records.' });
@@ -949,7 +992,10 @@ app.put('/api/users/:id', authenticateToken, (req: AuthenticatedRequest, res: Re
 });
 
 // Admin User Delete
-app.delete('/api/users/:id', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+app.delete('/api/users/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, `/users/${req.params.id}`, 'DELETE');
+  if (proxied) return;
+
   const currentUser = req.user!;
   if (currentUser.role !== 'ADMIN') {
     return res.status(403).json({ error: 'Access Denied: Only Admins can delete users.' });

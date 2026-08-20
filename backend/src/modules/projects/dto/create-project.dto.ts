@@ -69,27 +69,27 @@ export class CreateProjectDto {
   actualCompletionDate?: string;
 
   @ApiPropertyOptional({ example: 'https://github.com/org/repo' })
-  @IsUrl()
+  @IsString()
   @IsOptional()
   githubUrl?: string;
 
   @ApiPropertyOptional({ example: 'https://app.domain.com' })
-  @IsUrl()
+  @IsString()
   @IsOptional()
   liveUrl?: string;
 
   @ApiPropertyOptional({ example: 'https://demo.domain.com' })
-  @IsUrl()
+  @IsString()
   @IsOptional()
   demoUrl?: string;
 
   @ApiPropertyOptional({ example: 'https://docs.domain.com' })
-  @IsUrl()
+  @IsString()
   @IsOptional()
   docsUrl?: string;
 
   @ApiPropertyOptional({ example: 'https://docs.domain.com' })
-  @IsUrl()
+  @IsString()
   @IsOptional()
   documentationUrl?: string;
 

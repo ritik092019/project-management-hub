@@ -5,9 +5,10 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface JwtPayload {
-  sub: string;
-  email: string;
-  role: string;
+  sub?: string;
+  id?: string;
+  email?: string;
+  role?: string;
 }
 
 @Injectable()
@@ -24,9 +25,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-    });
+    const userId = payload?.sub || payload?.id;
+
+    let user = null;
+    if (userId) {
+      user = await this.prisma.user.findUnique({
+        where: { id: userId },
+      });
+    } else if (payload?.email) {
+      user = await this.prisma.user.findUnique({
+        where: { email: payload.email },
+      });
+    }
 
     if (!user) {
       throw new UnauthorizedException('User no longer exists');

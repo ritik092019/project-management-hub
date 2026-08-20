@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types.js';
 import { RoleBadge } from './RoleBadge.js';
-import { registerUser, resetPassword } from '../services/api.js';
+import { registerUser, requestForgotPassword, resetPassword } from '../services/api.js';
 import {
   X,
   LogIn,
@@ -21,7 +21,7 @@ import {
 
 interface LoginModalProps {
   onClose: () => void;
-  onLogin: (email: string) => Promise<void>;
+  onLogin: (email: string, password?: string) => Promise<void>;
   currentUser: User | null;
 }
 
@@ -50,51 +50,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
   const [enteredCode, setEnteredCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
 
-  const demoAccounts = [
-    {
-      role: 'ADMIN' as UserRole,
-      portalName: 'Admin Portal',
-      name: 'Sarah Jenkins',
-      title: 'VP of Software Engineering',
-      email: 'admin@team.com',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80',
-      description: 'Manage users, projects, system settings, security policy & audit logs.'
-    },
-    {
-      role: 'SUPERVISOR' as UserRole,
-      portalName: 'Supervisor Portal',
-      name: 'Dr. Robert Vance',
-      title: 'Lead Solutions Architect',
-      email: 'supervisor@team.com',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80',
-      description: 'Review project submissions, provide review notes, approve or request changes.'
-    },
-    {
-      role: 'DEVELOPER' as UserRole,
-      portalName: 'Team Member Portal',
-      name: 'Alex Chen',
-      title: 'Senior Fullstack Developer',
-      email: 'developer@team.com',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-      description: 'Create & manage assigned projects, upload specs, and track approval status.'
-    },
-    {
-      role: 'VIEWER' as UserRole,
-      portalName: 'Guest Portfolio Explorer',
-      name: 'Maya Lin',
-      title: 'Lead Product Manager',
-      email: 'viewer@team.com',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=120&q=80',
-      description: 'Read-only access to project cards, metrics, and API documentation.'
-    }
-  ];
-
-  const handleQuickLogin = async (email: string) => {
+  const handleQuickLogin = async (email: string, password?: string) => {
     try {
       setLoading(true);
       setError('');
-      setError('');
-      await onLogin(email);
+      await onLogin(email, password || 'Password123!');
       onClose();
     } catch (err: any) {
       setError(err.message || 'Login failed');
@@ -109,7 +69,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
       setError('Please enter your email address.');
       return;
     }
-    handleQuickLogin(emailInput.trim());
+    handleQuickLogin(emailInput.trim(), passwordInput.trim() || 'Password123!');
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -122,17 +82,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
     try {
       setLoading(true);
       setError('');
+      const passwordToUse = regPassword.trim() || 'Password123!';
       const res = await registerUser({
         name: regName.trim(),
         email: regEmail.trim(),
         role: regRole,
         title: regTitle.trim() || undefined,
         department: regDept.trim() || undefined,
-        password: regPassword || undefined
+        password: passwordToUse
       });
 
       setSuccessMsg(`Welcome ${res.user.name}! Your account has been created.`);
-      await onLogin(res.user.email);
+      await onLogin(res.user.email, passwordToUse);
       setTimeout(() => {
         onClose();
       }, 1000);
@@ -153,7 +114,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
     try {
       setLoading(true);
       setError('');
-      const res = await resetPassword(resetEmail.trim());
+      const res = await requestForgotPassword(resetEmail.trim());
       if (res.resetCode) {
         setGeneratedCode(res.resetCode);
         setResetStep('VERIFY');
@@ -180,11 +141,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
     try {
       setLoading(true);
       setError('');
-      await resetPassword(resetEmail.trim(), newPassword);
+      await resetPassword(resetEmail.trim(), newPassword, enteredCode.trim());
       setSuccessMsg('Password updated successfully! Redirecting to login...');
       setTimeout(() => {
         setMode('LOGIN');
         setEmailInput(resetEmail);
+        setPasswordInput(newPassword);
         setResetStep('REQUEST');
         setSuccessMsg('');
       }, 1500);
@@ -280,49 +242,29 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
 
           {/* MODE 1: LOGIN & PORTALS */}
           {mode === 'LOGIN' && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               
-              {/* Quick Role Portal Selection */}
-              <div className="space-y-2.5">
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-400" /> One-Click Role Login Portals
-                </label>
-
-                <div className="grid grid-cols-1 gap-2.5">
-                  {demoAccounts.map(acc => {
-                    const isSelected = currentUser?.email.toLowerCase() === acc.email.toLowerCase();
-                    return (
-                      <button
-                        key={acc.email}
-                        onClick={() => handleQuickLogin(acc.email)}
-                        disabled={loading}
-                        className={`w-full p-3.5 rounded-2xl border text-left transition-all duration-200 cursor-pointer flex items-center gap-3.5 ${
-                          isSelected
-                            ? 'bg-blue-500/15 border-blue-500 text-white ring-1 ring-blue-500 shadow-lg shadow-blue-500/10'
-                            : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-800/60'
-                        }`}
-                      >
-                        <img src={acc.avatar} alt={acc.name} className="w-11 h-11 rounded-2xl object-cover ring-2 ring-slate-800 shrink-0 shadow-md" />
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-0.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-xs text-slate-100">{acc.name}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">({acc.portalName})</span>
-                            </div>
-                            <RoleBadge role={acc.role} size="sm" />
-                          </div>
-                          <p className="text-[11px] text-slate-400 truncate">{acc.title}</p>
-                          <p className="text-[10px] text-slate-500 italic mt-0.5 leading-tight">{acc.description}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
+              {/* Active Logged-In User Profile Card (if authenticated) */}
+              {currentUser && (
+                <div className="p-4 rounded-2xl bg-blue-950/40 border border-blue-800/60 flex items-center gap-3.5 shadow-lg">
+                  <img
+                    src={currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80'}
+                    alt={currentUser.name}
+                    className="w-12 h-12 rounded-2xl object-cover ring-2 ring-blue-500/50 shrink-0 shadow-md"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <span className="font-bold text-xs text-white truncate">{currentUser.name}</span>
+                      <RoleBadge role={currentUser.role} size="sm" />
+                    </div>
+                    <p className="text-[11px] text-blue-300 font-mono truncate">{currentUser.email}</p>
+                    <p className="text-[10px] text-slate-400 truncate">{currentUser.title || currentUser.department || 'Active Account'}</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Form Input Login */}
-              <form onSubmit={handleLoginSubmit} className="pt-4 border-t border-slate-800 space-y-3">
+              <form onSubmit={handleLoginSubmit} className="space-y-3">
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center justify-between">
                   <span>Sign In With Account Credentials</span>
                   <button
@@ -339,6 +281,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
                     <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
                     <input
                       type="email"
+                      required
                       placeholder="Enter account email..."
                       value={emailInput}
                       onChange={e => setEmailInput(e.target.value)}
@@ -350,7 +293,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
                     <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
                     <input
                       type="password"
-                      placeholder="Password (optional for demo)..."
+                      required
+                      placeholder="Enter account password..."
                       value={passwordInput}
                       onChange={e => setPasswordInput(e.target.value)}
                       className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -362,7 +306,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
                     disabled={loading}
                     className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {loading ? 'Authenticating...' : 'Sign In To Portal'}
+                    {loading ? 'Authenticating...' : 'Sign In To Account'}
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>

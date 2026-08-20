@@ -106,9 +106,17 @@ export class AuthService {
         secret: this.configService.get<string>('JWT_SECRET') || 'super_secret_jwt_key_project_hub_2026',
       });
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
-      });
+      const userId = payload?.sub || payload?.id;
+      let user = null;
+      if (userId) {
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+        });
+      } else if (payload?.email) {
+        user = await this.prisma.user.findUnique({
+          where: { email: payload.email },
+        });
+      }
 
       if (!user || !user.refreshTokenHash || !user.isActive) {
         throw new UnauthorizedException('Invalid or expired refresh token');
@@ -138,9 +146,17 @@ export class AuthService {
         secret: this.configService.get<string>('JWT_SECRET') || 'super_secret_jwt_key_project_hub_2026',
       });
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
-      });
+      const userId = payload?.sub || payload?.id;
+      let user = null;
+      if (userId) {
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+        });
+      } else if (payload?.email) {
+        user = await this.prisma.user.findUnique({
+          where: { email: payload.email },
+        });
+      }
 
       if (!user || !user.isActive) {
         throw new UnauthorizedException('User inactive or invalid');
@@ -271,7 +287,7 @@ export class AuthService {
   }
 
   private async generateTokens(userId: string, email: string, role: string) {
-    const payload = { sub: userId, email, role };
+    const payload = { sub: userId, id: userId, email, role };
     const secret = this.configService.get<string>('JWT_SECRET') || 'super_secret_jwt_key_project_hub_2026';
 
     const accessToken = this.jwtService.sign(payload, {
