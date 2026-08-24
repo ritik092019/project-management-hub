@@ -1,3 +1,19 @@
+import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+
+const envPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'backend', '.env'),
+  path.resolve(__dirname, '.env'),
+  path.resolve(__dirname, '..', '.env'),
+];
+for (const envFile of envPaths) {
+  if (fs.existsSync(envFile)) {
+    dotenv.config({ path: envFile });
+  }
+}
+
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import https from 'https';
@@ -1460,11 +1476,16 @@ app.post('/api/tests/run', (req: Request, res: Response) => {
 
 // Server & Vite Middleware setup
 async function startServer() {
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
   const server = http.createServer(app);
 
   // Setup Gemini AI Chat, Low-Latency Flash-Lite, and Live API Voice WebSockets
   setupGeminiServices(app, server, () => PROJECTS);
+
+  // Health check endpoint for Render health monitoring
+  app.get('/health', (_req: Request, res: Response) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

@@ -1,17 +1,38 @@
+import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+
+const envPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'backend', '.env'),
+  path.resolve(__dirname, '.env'),
+  path.resolve(__dirname, '..', '.env'),
+];
+for (const envFile of envPaths) {
+  if (fs.existsSync(envFile)) {
+    dotenv.config({ path: envFile });
+  }
+}
+
 import { Express, Request, Response } from 'express';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 
-// Initialize Gemini Client with server-side API Key & user-agent header
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
+function getAiClient(): GoogleGenAI {
+  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+    throw new Error('GEMINI_API_KEY environment variable is missing on server. Please set GEMINI_API_KEY in your .env file or server environment.');
   }
-});
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+}
 
 export function setupGeminiServices(app: Express, server: http.Server, getProjectsData: () => any[]) {
   // 1. Gemini Multi-Turn Context-Aware Chatbot Endpoint
@@ -24,9 +45,10 @@ export function setupGeminiServices(app: Express, server: http.Server, getProjec
       }
 
       // Check API Key
-      if (!process.env.GEMINI_API_KEY) {
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
         return res.status(500).json({
-          error: 'GEMINI_API_KEY environment variable is missing on the server. Please check your environment variables in Settings > Secrets.'
+          error: 'GEMINI_API_KEY environment variable is missing on the server. Please check your .env file.'
         });
       }
 
@@ -79,7 +101,7 @@ Your responsibilities:
         parts: [{ text: lastMessage.content || lastMessage.text || '' }]
       });
 
-      const response = await ai.models.generateContent({
+      const response = await getAiClient().models.generateContent({
         model: targetModel,
         contents: formattedContents as any,
         config: {
@@ -130,7 +152,7 @@ Your responsibilities:
 
       const inputPrompt = prompt || `Give a bulleted 3-point instant executive summary for this project: ${contextText}`;
 
-      const response = await ai.models.generateContent({
+      const response = await getAiClient().models.generateContent({
         model: 'gemini-3.1-flash-lite',
         contents: inputPrompt,
         config: {
@@ -189,7 +211,7 @@ Your responsibilities:
       const projects = getProjectsData();
       const briefProjectContext = projects.map(p => `- ${p.name} (${p.status}, Tech: ${p.techStack?.slice(0, 3).join(', ')})`).join('\n');
 
-      session = await ai.live.connect({
+      session = await getAiClient().live.connect({
         model: 'gemini-3.1-flash-live-preview',
         config: {
           responseModalities: [Modality.AUDIO],
