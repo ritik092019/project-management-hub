@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Headers,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -124,6 +125,28 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Current password incorrect' })
   async changePassword(@CurrentUser() user: any, @Body() changePasswordDto: ChangePasswordDto) {
     return this.authService.changePassword(user.id, changePasswordDto);
+  }
+
+  @Public()
+  @Get('auth/approve-request')
+  @ApiOperation({ summary: 'Process Admin approval/rejection request via email link token' })
+  async approveRequestGet(@Query('token') token: string, @Query('action') action: string) {
+    return this.authService.processApprovalRequest(token, action || 'approve');
+  }
+
+  @Public()
+  @Post('auth/approve-request')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Process Admin approval/rejection request via POST' })
+  async approveRequestPost(@Body() body: { token: string; action: string }) {
+    return this.authService.processApprovalRequest(body.token, body.action || 'approve');
+  }
+
+  @Public()
+  @Get('auth/pending-requests')
+  @ApiOperation({ summary: 'List all pending approval requests' })
+  async getPendingRequests() {
+    return this.authService.getPendingRequests();
   }
 
   @ApiBearerAuth()

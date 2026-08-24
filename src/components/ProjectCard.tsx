@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'motion/react';
 import { Project, User } from '../types.js';
+import { formatExternalUrl } from '../services/api.js';
 import { StatusBadge } from './StatusBadge.js';
 import { ApprovalBadge } from './ApprovalBadge.js';
 import { useTheme } from '../context/ThemeContext.tsx';
@@ -438,21 +439,55 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                 </h3>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <a
-                  href={project.links?.live || project.links?.demo || project.links?.github || `${window.location.origin}/?project=${project.id}&live=true`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  }}
-                  className="px-2.5 py-1.5 rounded-xl bg-emerald-950/90 hover:bg-emerald-600 text-emerald-300 hover:text-white backdrop-blur-md border border-emerald-500/60 transition-all shadow-xl flex items-center gap-1.5 text-[11px] font-extrabold shrink-0 cursor-pointer hover:scale-105 group/launch"
-                  title="Launch Project in New Tab"
-                >
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span className="hidden sm:inline">Launch App</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-emerald-400 group-hover/launch:text-white group-hover/launch:translate-x-0.5 transition-transform" />
-                </a>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {project.links?.live && (
+                  <a
+                    href={formatExternalUrl(project.links.live)}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-emerald-950/90 hover:bg-emerald-600 text-emerald-300 hover:text-white backdrop-blur-md border border-emerald-500/60 transition-all shadow-xl flex items-center gap-1.5 text-[11px] font-extrabold shrink-0 cursor-pointer hover:scale-105 group/launch"
+                    title="Launch Project Live Application"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span className="hidden sm:inline">Launch App</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-emerald-400 group-hover/launch:text-white group-hover/launch:translate-x-0.5 transition-transform" />
+                  </a>
+                )}
+
+                {project.links?.github && (
+                  <a
+                    href={formatExternalUrl(project.links.github)}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-700 text-slate-200 hover:text-white backdrop-blur-md border border-slate-700 transition-all shadow-xl flex items-center gap-1.5 text-[11px] font-extrabold shrink-0 cursor-pointer hover:scale-105 group/github"
+                    title="Open GitHub Code Repository"
+                  >
+                    <Github className="w-3.5 h-3.5 text-slate-300 group-hover/github:text-white" />
+                    <span className="hidden sm:inline">GitHub</span>
+                  </a>
+                )}
+
+                {(project.links?.docs || (project as any).documentationUrl) && (
+                  <a
+                    href={formatExternalUrl(project.links?.docs || (project as any).documentationUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-blue-950/90 hover:bg-blue-600 text-blue-300 hover:text-white backdrop-blur-md border border-blue-500/60 transition-all shadow-xl flex items-center gap-1.5 text-[11px] font-extrabold shrink-0 cursor-pointer hover:scale-105 group/docs"
+                    title="Open Project Documentation"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-blue-400 group-hover/docs:text-white" />
+                    <span className="hidden sm:inline">Docs</span>
+                  </a>
+                )}
 
                 <button
                   onClick={(e) => {
@@ -563,7 +598,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
 
               {project.links?.github && (
                 <a
-                  href={project.links.github}
+                  href={formatExternalUrl(project.links.github)}
                   target="_blank"
                   rel="noreferrer"
                   title="GitHub Repository"
@@ -576,7 +611,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
 
               {project.links?.live && (
                 <a
-                  href={project.links.live}
+                  href={formatExternalUrl(project.links.live)}
                   target="_blank"
                   rel="noreferrer"
                   title="Live Deployed URL"
@@ -589,7 +624,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
 
               {project.links?.demo && (
                 <a
-                  href={project.links.demo}
+                  href={formatExternalUrl(project.links.demo)}
                   target="_blank"
                   rel="noreferrer"
                   title="Watch Video Demo"
@@ -602,7 +637,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
 
               {project.links?.docs && (
                 <a
-                  href={project.links.docs}
+                  href={formatExternalUrl(project.links.docs)}
                   target="_blank"
                   rel="noreferrer"
                   title="Architecture Documentation"
@@ -627,20 +662,54 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                 <Share2 className="w-3.5 h-3.5" />
               </button>
 
-              <a
-                href={project.links?.live || project.links?.demo || project.links?.github || `${window.location.origin}/?project=${project.id}&live=true`}
-                target="_blank"
-                rel="noreferrer"
-                onClick={e => {
-                  e.stopPropagation();
-                }}
-                className="px-2.5 py-1.5 text-xs font-bold text-emerald-300 bg-emerald-950/80 hover:bg-emerald-600 hover:text-white border border-emerald-500/50 rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer group/launch"
-                title="Launch Running App in New Tab"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                <span>Launch App</span>
-                <ExternalLink className="w-3 h-3 text-emerald-400 group-hover/launch:text-white group-hover/launch:translate-x-0.5 transition-transform" />
-              </a>
+              {project.links?.github && (
+                <a
+                  href={formatExternalUrl(project.links.github)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={e => {
+                    e.stopPropagation();
+                  }}
+                  className="px-2.5 py-1.5 text-xs font-bold text-slate-200 bg-slate-800/90 hover:bg-slate-700 hover:text-white border border-slate-700 rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer group/github"
+                  title="Open GitHub Code Repository"
+                >
+                  <Github className="w-3.5 h-3.5 text-slate-300 group-hover/github:text-white" />
+                  <span>GitHub</span>
+                </a>
+              )}
+
+              {(project.links?.docs || (project as any).documentationUrl) && (
+                <a
+                  href={formatExternalUrl(project.links?.docs || (project as any).documentationUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={e => {
+                    e.stopPropagation();
+                  }}
+                  className="px-2.5 py-1.5 text-xs font-bold text-blue-300 bg-blue-950/80 hover:bg-blue-600 hover:text-white border border-blue-500/50 rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer group/docs"
+                  title="Open Project Documentation"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-400 group-hover/docs:text-white" />
+                  <span>Docs</span>
+                </a>
+              )}
+
+              {project.links?.live && (
+                <a
+                  href={formatExternalUrl(project.links.live)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={e => {
+                    e.stopPropagation();
+                  }}
+                  className="px-2.5 py-1.5 text-xs font-bold text-emerald-300 bg-emerald-950/80 hover:bg-emerald-600 hover:text-white border border-emerald-500/50 rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer group/launch"
+                  title="Launch Running App in New Tab"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span>Launch App</span>
+                  <ExternalLink className="w-3 h-3 text-emerald-400 group-hover/launch:text-white group-hover/launch:translate-x-0.5 transition-transform" />
+                </a>
+              )}
 
               <MagneticButton
                 enableMagnetic={isAnimationEnabled}

@@ -17,6 +17,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { FilesModule } from './modules/files/files.module';
 import { GithubModule } from './modules/github/github.module';
 import { HealthModule } from './modules/health/health.module';
+import { MailModule } from './modules/email/mail.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { HealthModule } from './modules/health/health.module';
       },
     ]),
     PrismaModule,
+    MailModule,
     UsersModule,
     TeamsModule,
     ProjectsModule,

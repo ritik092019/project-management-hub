@@ -21,7 +21,8 @@ import {
   Command,
   Bot,
   Mic,
-  Zap
+  Zap,
+  Clock
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -39,6 +40,7 @@ interface NavbarProps {
   onOpenKeyboardShortcuts: () => void;
   onOpenGeminiChat: () => void;
   onOpenVoiceChat: () => void;
+  onOpenPendingApprovals?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -55,7 +57,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenThemeCustomizer,
   onOpenKeyboardShortcuts,
   onOpenGeminiChat,
-  onOpenVoiceChat
+  onOpenVoiceChat,
+  onOpenPendingApprovals
 }) => {
   const { theme, accentClasses, updateTheme } = useTheme();
   const canAddProject = currentUser && currentUser.role !== 'VIEWER';
@@ -226,6 +229,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <NotificationCenter onSelectProject={onSelectProject} />
+
+            {currentUser?.role === 'ADMIN' && onOpenPendingApprovals && (
+              <button
+                onClick={onOpenPendingApprovals}
+                className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:text-white hover:bg-blue-600/30 transition-all cursor-pointer relative"
+                title="Gmail Notification Approval Queue (Review Pending Registrations & Projects)"
+              >
+                <Clock className="w-4 h-4 text-blue-400" />
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              </button>
+            )}
 
             {canAddProject && (
               <button

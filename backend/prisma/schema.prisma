@@ -82,6 +82,7 @@ model User {
   department            String?
   title                 String?
   isActive              Boolean           @default(true)
+  isApproved            Boolean           @default(false)
   refreshTokenHash      String?
   resetTokenHash        String?
   resetTokenExpires     DateTime?
@@ -139,8 +140,10 @@ model Project {
   description            String
   category               ProjectCategory     @default(WEB_APP)
   ownerId                String
+  ownerName              String?
   owner                  User                @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   supervisorId           String?
+  supervisorName         String?
   supervisor             User?               @relation("ProjectSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
   teamId                 String?
   team                   Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -323,3 +326,21 @@ model GithubCache {
   @@index([repoUrl])
   @@map("github_cache")
 }
+
+model PendingRequest {
+  id          String   @id @default(uuid())
+  type        String   // 'USER_REGISTRATION' | 'PROJECT_CREATE' | 'PROJECT_DELETE'
+  targetId    String?  // User ID or Project ID if applicable
+  payload     String?  // JSON stringified data
+  token       String   @unique
+  status      String   @default("PENDING") // 'PENDING' | 'APPROVED' | 'REJECTED'
+  requestedBy String?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+
+  @@index([token])
+  @@index([type])
+  @@index([status])
+  @@map("pending_requests")
+}
+

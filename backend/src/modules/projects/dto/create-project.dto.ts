@@ -28,10 +28,40 @@ export class CreateProjectDto {
   @IsOptional()
   ownerId?: string;
 
+  @ApiPropertyOptional({ example: 'Ritika Asthana' })
+  @IsString()
+  @IsOptional()
+  owner?: string;
+
+  @ApiPropertyOptional({ example: 'Ritika Asthana' })
+  @IsString()
+  @IsOptional()
+  ownerName?: string;
+
+  @ApiPropertyOptional({ example: 'ritika@team.com' })
+  @IsString()
+  @IsOptional()
+  ownerEmail?: string;
+
   @ApiPropertyOptional({ example: 'user-uuid-supervisor' })
   @IsString()
   @IsOptional()
   supervisorId?: string;
+
+  @ApiPropertyOptional({ example: 'Alok kumar' })
+  @IsString()
+  @IsOptional()
+  supervisor?: string;
+
+  @ApiPropertyOptional({ example: 'Alok kumar' })
+  @IsString()
+  @IsOptional()
+  supervisorName?: string;
+
+  @ApiPropertyOptional({ example: 'alok@team.com' })
+  @IsString()
+  @IsOptional()
+  supervisorEmail?: string;
 
   @ApiPropertyOptional({ example: 'team-uuid' })
   @IsString()

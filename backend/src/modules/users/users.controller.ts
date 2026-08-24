@@ -23,6 +23,22 @@ export class UsersController {
   }
 
   @Public()
+  @Get('developers')
+  @ApiOperation({ summary: 'Get all developers' })
+  async findDevelopers() {
+    const users = await this.usersService.findAll();
+    return { developers: users };
+  }
+
+  @Public()
+  @Get('supervisors')
+  @ApiOperation({ summary: 'Get all supervisors' })
+  async findSupervisors() {
+    const users = await this.usersService.findAll();
+    return { supervisors: users };
+  }
+
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Get user by ID' })
   @ApiParam({ name: 'id', description: 'User UUID' })

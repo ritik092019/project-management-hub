@@ -6,7 +6,7 @@ import { CommentSection } from './CommentSection.js';
 import { ReviewSection } from './ReviewSection.js';
 import { ActivityTimeline } from './ActivityTimeline.js';
 import { LowLatencySummaryButton } from './LowLatencySummaryButton.js';
-import { fetchUsers } from '../services/api.js';
+import { fetchUsers, formatExternalUrl } from '../services/api.js';
 import { ProjectResourcesTab } from './ProjectResourcesTab.js';
 import {
   X,
@@ -121,25 +121,47 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-2">
-              <a
-                href={currentProject.links?.live || currentProject.links?.demo || currentProject.links?.github || '#'}
-                target="_blank"
-                rel="noreferrer"
-                onClick={e => {
-                  const targetUrl = currentProject.links?.live || currentProject.links?.demo || currentProject.links?.github;
-                  if (!targetUrl) {
-                    e.preventDefault();
-                    onClose();
-                    onEdit(currentProject);
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer group/launch"
-                title={currentProject.links?.live || currentProject.links?.demo ? `Open Running App: ${currentProject.links?.live || currentProject.links?.demo}` : 'Set Live Application URL'}
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
-                <span>Launch App</span>
-                <ExternalLink className="w-3.5 h-3.5 group-hover/launch:translate-x-0.5 transition-transform" />
-              </a>
+              {currentProject.links?.live && (
+                <a
+                  href={formatExternalUrl(currentProject.links.live)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer group/launch"
+                  title={`Open Live App: ${formatExternalUrl(currentProject.links.live)}`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
+                  <span>Launch App</span>
+                  <ExternalLink className="w-3.5 h-3.5 group-hover/launch:translate-x-0.5 transition-transform" />
+                </a>
+              )}
+
+              {currentProject.links?.github && (
+                <a
+                  href={formatExternalUrl(currentProject.links.github)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold shadow-md transition-all cursor-pointer border border-slate-700"
+                  title={`Open GitHub Repository: ${formatExternalUrl(currentProject.links.github)}`}
+                >
+                  <Github className="w-3.5 h-3.5 text-slate-300" />
+                  <span>GitHub Code</span>
+                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                </a>
+              )}
+
+              {(currentProject.links?.docs || (currentProject as any).documentationUrl) && (
+                <a
+                  href={formatExternalUrl(currentProject.links?.docs || (currentProject as any).documentationUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-950/80 hover:bg-blue-600 text-blue-300 hover:text-white text-xs font-bold shadow-md transition-all cursor-pointer border border-blue-500/50"
+                  title="Open Project Documentation"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Docs</span>
+                  <ExternalLink className="w-3 h-3 text-blue-400" />
+                </a>
+              )}
 
               <LowLatencySummaryButton
                 projectId={currentProject.id}
@@ -326,7 +348,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {currentProject.links?.github && (
                     <a
-                      href={currentProject.links.github}
+                      href={formatExternalUrl(currentProject.links.github)}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs transition-colors border border-slate-700"
@@ -339,7 +361,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
                   {currentProject.links?.live && (
                     <a
-                      href={currentProject.links.live}
+                      href={formatExternalUrl(currentProject.links.live)}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center gap-2.5 p-3 rounded-xl bg-green-500/10 hover:bg-green-500/20 text-green-300 font-medium text-xs transition-colors border border-green-500/30"
@@ -352,7 +374,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
                   {currentProject.links?.demo && (
                     <a
-                      href={currentProject.links.demo}
+                      href={formatExternalUrl(currentProject.links.demo)}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-medium text-xs transition-colors border border-amber-500/30"
@@ -365,7 +387,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
                   {currentProject.links?.docs && (
                     <a
-                      href={currentProject.links.docs}
+                      href={formatExternalUrl(currentProject.links.docs)}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center gap-2.5 p-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 font-medium text-xs transition-colors border border-blue-500/30"

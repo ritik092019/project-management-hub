@@ -2,6 +2,18 @@ import { Project, ProjectFilterParams, DashboardAnalytics, User, ApiTestSummary,
 
 const API_BASE = '/api';
 
+export function formatExternalUrl(url?: string): string {
+  if (!url || !url.trim()) return '';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('//')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('localhost') || trimmed.startsWith('127.0.0.1')) {
+    return `http://${trimmed}`;
+  }
+  return `https://${trimmed}`;
+}
+
 // Get stored JWT token
 export function getStoredToken(): string | null {
   return localStorage.getItem('jwt_token');
@@ -251,9 +263,9 @@ function normalizeProject(p: any): Project {
     name: p.name || '',
     summary: p.summary || p.description?.substring(0, 150) || '',
     description: p.description || '',
-    owner: typeof p.owner === 'object' ? p.owner.name : (p.owner || 'Unassigned'),
+    owner: p.ownerName || (typeof p.owner === 'object' ? p.owner?.name : p.owner) || 'Unassigned',
     ownerEmail: p.ownerEmail || p.ownerDetails?.email || p.owner?.email || '',
-    supervisor: typeof p.supervisor === 'object' ? p.supervisor.name : (p.supervisor || 'Unassigned'),
+    supervisor: p.supervisorName || (typeof p.supervisor === 'object' ? p.supervisor?.name : p.supervisor) || 'Unassigned',
     supervisorEmail: p.supervisorEmail || p.supervisorDetails?.email || p.supervisor?.email || '',
     deploymentDate: p.deploymentDate ? (typeof p.deploymentDate === 'string' ? p.deploymentDate.split('T')[0] : new Date(p.deploymentDate).toISOString().split('T')[0]) : '',
     status: p.status || 'IN_PROGRESS',
@@ -317,7 +329,7 @@ export async function fetchProjects(params: ProjectFilterParams = {}): Promise<{
   return { projects, total, page, totalPages };
 }
 
-export async function createProject(projectData: Partial<Project>): Promise<Project> {
+export async function createProject(projectData: Partial<Project>): Promise<Project & { pendingApproval?: boolean; message?: string }> {
   const res = await fetch(`${API_BASE}/projects`, {
     method: 'POST',
     headers: getAuthHeaders(),
@@ -331,6 +343,15 @@ export async function createProject(projectData: Partial<Project>): Promise<Proj
 
   const json = await res.json();
   const data = json.data || json;
+
+  if (data.pendingApproval) {
+    return {
+      ...normalizeProject(data),
+      pendingApproval: true,
+      message: data.message,
+    } as any;
+  }
+
   const project = data.project || data;
   return normalizeProject(project);
 }
@@ -353,7 +374,7 @@ export async function updateProject(id: string, projectData: Partial<Project>): 
   return normalizeProject(project);
 }
 
-export async function deleteProject(id: string): Promise<void> {
+export async function deleteProject(id: string): Promise<{ pendingApproval?: boolean; message?: string }> {
   const res = await fetch(`${API_BASE}/projects/${id}`, {
     method: 'DELETE',
     headers: getAuthHeaders()
@@ -363,6 +384,9 @@ export async function deleteProject(id: string): Promise<void> {
     const err = await res.json().catch(() => ({ error: 'Failed to delete project' }));
     throw new Error(err.error || err.message || 'Server error deleting project');
   }
+
+  const json = await res.json();
+  return json.data || json;
 }
 
 export async function submitProjectForReview(id: string): Promise<Project> {
@@ -469,17 +493,43 @@ export async function fetchAnalyticsCompletionTime(params: ProjectFilterParams =
 }
 
 export async function fetchDevelopers(): Promise<User[]> {
-  const res = await fetch(`${API_BASE}/developers`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.developers;
+  try {
+    const res = await fetch(`${API_BASE}/developers`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.developers) && data.developers.length > 0) return data.developers;
+    }
+    const userRes = await fetch(`${API_BASE}/users`);
+    if (userRes.ok) {
+      const userData = await userRes.json();
+      if (Array.isArray(userData)) return userData;
+      if (userData && Array.isArray(userData.users)) return userData.users;
+    }
+    return [];
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchSupervisors(): Promise<User[]> {
-  const res = await fetch(`${API_BASE}/supervisors`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.supervisors;
+  try {
+    const res = await fetch(`${API_BASE}/supervisors`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.supervisors) && data.supervisors.length > 0) return data.supervisors;
+    }
+    const userRes = await fetch(`${API_BASE}/users`);
+    if (userRes.ok) {
+      const userData = await userRes.json();
+      if (Array.isArray(userData)) return userData;
+      if (userData && Array.isArray(userData.users)) return userData.users;
+    }
+    return [];
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchTechStacks(): Promise<string[]> {

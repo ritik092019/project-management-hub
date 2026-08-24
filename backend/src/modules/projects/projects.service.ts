@@ -1,20 +1,29 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../email/mail.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { ProjectFilterDto } from './dto/project-filter.dto';
 import { UpdateProjectStatusDto } from './dto/project-action.dto';
 import { Prisma, UserRole, ProjectCategory, ProjectStatus, ApprovalStatus, Priority } from '@prisma/client';
+import * as crypto from 'crypto';
 
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '@prisma/client';
 
 @Injectable()
 export class ProjectsService {
+  private readonly adminEmail: string;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) {}
+    private readonly mailService: MailService,
+    private readonly configService: ConfigService,
+  ) {
+    this.adminEmail = this.mailService.getAdminEmail();
+  }
 
   private formatProject(project: any) {
     if (!project) return null;
@@ -23,9 +32,9 @@ export class ProjectsService {
       ? project.technologies.map((pt: any) => pt.technology?.name).filter(Boolean)
       : [];
 
-    const ownerName = project.owner?.name || 'Unassigned';
+    const ownerName = project.ownerName || project.owner?.name || 'Unassigned';
     const ownerEmail = project.owner?.email || '';
-    const supervisorName = project.supervisor?.name || 'Unassigned';
+    const supervisorName = project.supervisorName || project.supervisor?.name || 'Unassigned';
     const supervisorEmail = project.supervisor?.email || '';
     const teamName = project.team?.name || 'Unassigned';
 
@@ -305,18 +314,55 @@ export class ProjectsService {
       expectedCompletionDate,
       actualCompletionDate,
       ownerId,
+      owner,
+      ownerName,
+      ownerEmail,
+      supervisorId,
+      supervisor,
+      supervisorName,
+      supervisorEmail,
       docsUrl,
       documentationUrl,
       imageUrl,
       thumbnail,
       summary,
+      links,
+      liveUrl,
+      githubUrl,
+      demoUrl,
       ...rest
-    } = createProjectDto;
+    } = createProjectDto as any;
 
     // Resolve ownerId
-    let finalOwnerId = ownerId || currentUser?.id;
+    let finalOwnerId = ownerId;
+    const reqOwnerName = ownerName || owner || (createProjectDto as any).owner;
+    const reqOwnerEmail = ownerEmail || (createProjectDto as any).ownerEmail;
+    if (reqOwnerName || reqOwnerEmail) {
+      let foundOwner = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            ...(reqOwnerEmail ? [{ email: reqOwnerEmail }] : []),
+            ...(reqOwnerName ? [{ name: { equals: reqOwnerName } }, { email: reqOwnerName }] : [])
+          ]
+        }
+      });
+      if (!foundOwner && reqOwnerName) {
+        foundOwner = await this.prisma.user.create({
+          data: {
+            name: reqOwnerName,
+            email: reqOwnerEmail || `${reqOwnerName.toLowerCase().replace(/[^a-z0-9]/g, '')}@team.com`,
+            role: UserRole.DEVELOPER
+          }
+        }).catch(() => null as any);
+      }
+      if (foundOwner) {
+        finalOwnerId = foundOwner.id;
+      }
+    }
     if (!finalOwnerId) {
-      // Find default first admin/developer user
+      finalOwnerId = currentUser?.id;
+    }
+    if (!finalOwnerId) {
       const defaultOwner = await this.prisma.user.findFirst({
         where: { role: { in: [UserRole.DEVELOPER, UserRole.ADMIN] } },
       });
@@ -325,6 +371,43 @@ export class ProjectsService {
       }
       finalOwnerId = defaultOwner.id;
     }
+
+    // Resolve supervisorId
+    let finalSupervisorId = supervisorId || (createProjectDto as any).supervisorId;
+    const reqSupName = supervisorName || supervisor || (createProjectDto as any).supervisor;
+    const reqSupEmail = supervisorEmail || (createProjectDto as any).supervisorEmail;
+    if (reqSupName || reqSupEmail) {
+      let foundSup = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            ...(reqSupEmail ? [{ email: reqSupEmail }] : []),
+            ...(reqSupName ? [{ name: { equals: reqSupName } }, { email: reqSupName }] : [])
+          ]
+        }
+      });
+      if (!foundSup && reqSupName) {
+        foundSup = await this.prisma.user.create({
+          data: {
+            name: reqSupName,
+            email: reqSupEmail || `${reqSupName.toLowerCase().replace(/[^a-z0-9]/g, '')}@team.com`,
+            role: UserRole.SUPERVISOR
+          }
+        }).catch(() => null as any);
+      }
+      if (foundSup) {
+        finalSupervisorId = foundSup.id;
+      }
+    }
+
+    const finalLiveUrl = liveUrl || links?.live || rest.liveUrl || null;
+    const finalGithubUrl = githubUrl || links?.github || rest.githubUrl || null;
+    const finalDemoUrl = demoUrl || links?.demo || rest.demoUrl || null;
+    const docUrlVal = documentationUrl || docsUrl || links?.docs || null;
+    const imgUrlVal = imageUrl || thumbnail || null;
+    const summaryVal = summary || rest.description.slice(0, 150);
+
+    const isAdmin = currentUser?.email?.toLowerCase() === this.adminEmail.toLowerCase() || currentUser?.role === UserRole.ADMIN;
+    const initialApprovalStatus = (rest as any).approvalStatus || (isAdmin ? ApprovalStatus.APPROVED : ApprovalStatus.PENDING_REVIEW);
 
     // Resolve Technology IDs from string names if technologyIds not provided directly
     let resolvedTechIds: string[] = technologyIds || [];
@@ -341,15 +424,18 @@ export class ProjectsService {
       }
     }
 
-    const docUrlVal = documentationUrl || docsUrl || null;
-    const imgUrlVal = imageUrl || thumbnail || null;
-    const summaryVal = summary || rest.description.slice(0, 150);
-
     const project = await this.prisma.project.create({
       data: {
         ...rest,
+        approvalStatus: initialApprovalStatus,
         summary: summaryVal,
         ownerId: finalOwnerId,
+        ownerName: reqOwnerName || undefined,
+        supervisorId: finalSupervisorId || null,
+        supervisorName: reqSupName || undefined,
+        liveUrl: finalLiveUrl,
+        githubUrl: finalGithubUrl,
+        demoUrl: finalDemoUrl,
         docsUrl: docUrlVal,
         documentationUrl: docUrlVal,
         imageUrl: imgUrlVal,
@@ -407,8 +493,20 @@ export class ProjectsService {
       documentationUrl,
       imageUrl,
       thumbnail,
+      links,
+      liveUrl,
+      githubUrl,
+      demoUrl,
+      owner,
+      ownerName,
+      ownerEmail,
+      ownerId,
+      supervisor,
+      supervisorName,
+      supervisorEmail,
+      supervisorId,
       ...rest
-    } = updateProjectDto;
+    } = updateProjectDto as any;
 
     let resolvedTechIds: string[] | undefined = technologyIds;
     if (!resolvedTechIds && techStack && techStack.length > 0) {
@@ -424,13 +522,75 @@ export class ProjectsService {
       }
     }
 
-    const docUrlVal = documentationUrl ?? docsUrl;
+    const finalLiveUrl = liveUrl ?? links?.live;
+    const finalGithubUrl = githubUrl ?? links?.github;
+    const finalDemoUrl = demoUrl ?? links?.demo;
+    const docUrlVal = documentationUrl ?? docsUrl ?? links?.docs;
     const imgUrlVal = imageUrl ?? thumbnail;
+
+    const reqOwnerName = ownerName || owner || (updateProjectDto as any).owner;
+    const reqOwnerEmail = ownerEmail || (updateProjectDto as any).ownerEmail;
+    let finalOwnerId = ownerId;
+    if (reqOwnerName || reqOwnerEmail) {
+      let foundOwner = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            ...(reqOwnerEmail ? [{ email: reqOwnerEmail }] : []),
+            ...(reqOwnerName ? [{ name: { equals: reqOwnerName } }, { email: reqOwnerName }] : [])
+          ]
+        }
+      });
+      if (!foundOwner && reqOwnerName) {
+        foundOwner = await this.prisma.user.create({
+          data: {
+            name: reqOwnerName,
+            email: reqOwnerEmail || `${reqOwnerName.toLowerCase().replace(/[^a-z0-9]/g, '')}@team.com`,
+            role: UserRole.DEVELOPER
+          }
+        }).catch(() => null as any);
+      }
+      if (foundOwner) {
+        finalOwnerId = foundOwner.id;
+      }
+    }
+
+    const reqSupName = supervisorName || supervisor || (updateProjectDto as any).supervisor;
+    const reqSupEmail = supervisorEmail || (updateProjectDto as any).supervisorEmail;
+    let finalSupervisorId = supervisorId;
+    if (reqSupName || reqSupEmail) {
+      let foundSup = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            ...(reqSupEmail ? [{ email: reqSupEmail }] : []),
+            ...(reqSupName ? [{ name: { equals: reqSupName } }, { email: reqSupName }] : [])
+          ]
+        }
+      });
+      if (!foundSup && reqSupName) {
+        foundSup = await this.prisma.user.create({
+          data: {
+            name: reqSupName,
+            email: reqSupEmail || `${reqSupName.toLowerCase().replace(/[^a-z0-9]/g, '')}@team.com`,
+            role: UserRole.SUPERVISOR
+          }
+        }).catch(() => null as any);
+      }
+      if (foundSup) {
+        finalSupervisorId = foundSup.id;
+      }
+    }
 
     const updated = await this.prisma.project.update({
       where: { id },
       data: {
         ...rest,
+        ...(finalOwnerId ? { ownerId: finalOwnerId } : {}),
+        ...(reqOwnerName ? { ownerName: reqOwnerName } : {}),
+        ...(finalSupervisorId ? { supervisorId: finalSupervisorId } : {}),
+        ...(reqSupName ? { supervisorName: reqSupName } : {}),
+        ...(finalLiveUrl !== undefined ? { liveUrl: finalLiveUrl } : {}),
+        ...(finalGithubUrl !== undefined ? { githubUrl: finalGithubUrl } : {}),
+        ...(finalDemoUrl !== undefined ? { demoUrl: finalDemoUrl } : {}),
         ...(docUrlVal !== undefined ? { docsUrl: docUrlVal, documentationUrl: docUrlVal } : {}),
         ...(imgUrlVal !== undefined ? { imageUrl: imgUrlVal, thumbnail: imgUrlVal } : {}),
         deploymentDate: deploymentDate ? new Date(deploymentDate) : undefined,
@@ -468,14 +628,43 @@ export class ProjectsService {
       throw new NotFoundException(`Project with ID "${id}" not found`);
     }
 
-    // Role-based permission check
-    if (currentUser) {
-      const isOwner = existing.ownerId === currentUser.id;
-      const isAdmin = currentUser.role === UserRole.ADMIN;
+    const isAdmin = currentUser?.email?.toLowerCase() === this.adminEmail.toLowerCase() || currentUser?.role === UserRole.ADMIN;
 
-      if (!isOwner && !isAdmin) {
-        throw new ForbiddenException('Only project owners or administrators can delete projects.');
-      }
+    // If non-admin user requests deletion, create pending request & send Gmail notification to Admin
+    if (!isAdmin) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      await this.prisma.pendingRequest.create({
+        data: {
+          type: 'PROJECT_DELETE',
+          targetId: id,
+          payload: JSON.stringify({ projectId: id, projectName: existing.name, requestedBy: currentUser?.email }),
+          token,
+          status: 'PENDING',
+          requestedBy: currentUser?.email || 'User',
+          expiresAt,
+        },
+      });
+
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+      const approveUrl = `${frontendUrl}/approve-request?type=PROJECT_DELETE&token=${token}&action=approve`;
+      const rejectUrl = `${frontendUrl}/approve-request?type=PROJECT_DELETE&token=${token}&action=reject`;
+
+      await this.mailService.sendProjectDeleteApprovalRequest({
+        projectName: existing.name,
+        projectId: id,
+        requestedByName: currentUser?.name || 'Team Member',
+        requestedByEmail: currentUser?.email || 'unknown@team.com',
+        approveUrl,
+        rejectUrl,
+      });
+
+      return {
+        message: `Project deletion request for "${existing.name}" submitted! A notification email has been requested to the Admin's Gmail. The project will be deleted once accepted by the Admin.`,
+        pendingApproval: true,
+        token,
+      };
     }
 
     await this.prisma.project.delete({ where: { id } });

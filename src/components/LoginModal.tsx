@@ -92,13 +92,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLogin, curren
         password: passwordToUse
       });
 
-      setSuccessMsg(`Welcome ${res.user.name}! Your account has been created.`);
-      await onLogin(res.user.email, passwordToUse);
-      setTimeout(() => {
-        onClose();
-      }, 1000);
+      if ((res as any).pendingApproval || (res as any).message?.includes('pending Admin approval') || !(res as any).token) {
+        setSuccessMsg((res as any).message || 'Registration submitted! A notification email has been requested to the Admin\'s Gmail for approval.');
+        setMode('LOGIN');
+      } else {
+        setSuccessMsg(`Welcome ${res.user.name}! Your account has been created.`);
+        await onLogin(res.user.email, passwordToUse);
+        setTimeout(() => {
+          onClose();
+        }, 1000);
+      }
     } catch (err: any) {
-      setError(err.message || 'Registration failed.');
+      setError(err.message || 'Registration failed');
     } finally {
       setLoading(false);
     }

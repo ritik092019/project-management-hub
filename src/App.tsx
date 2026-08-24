@@ -41,10 +41,18 @@ import { OfflineBanner } from './components/OfflineBanner.tsx';
 
 import { Layers, Plus, FolderKanban, ShieldCheck, AlertCircle, Sparkles, RefreshCw, Calendar, Cpu, Command, ShieldAlert, Lock, UserCheck, Kanban } from 'lucide-react';
 
+import { ApprovalHandler } from './components/ApprovalHandler.tsx';
+import { PendingApprovalsModal } from './components/PendingApprovalsModal.tsx';
+
 function AppContent() {
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/approve-request')) {
+    return <ApprovalHandler />;
+  }
+
   // Navigation & User State
   const [activeTab, setActiveTab] = useState<'showcase' | 'workspace' | 'analytics' | 'admin' | 'api-docs'>('showcase');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isPendingApprovalsOpen, setIsPendingApprovalsOpen] = useState(false);
 
   const { theme, accentClasses } = useTheme();
   const { showToast } = useToast();
@@ -97,7 +105,7 @@ function AppContent() {
         setLoading(true);
         let user = await getCurrentUser();
         if (!user) {
-          const authData = await loginUser('admin@team.com', 'Password123!');
+          const authData = await loginUser('ritikasthana092019@gmail.com', 'Password123!');
           user = authData.user;
         }
         setCurrentUser(user);
@@ -196,6 +204,16 @@ function AppContent() {
         .catch(err => console.error(err));
     }
   }, [activeTab, projects, filters]);
+
+  // Re-fetch database developers & supervisors whenever project modal opens
+  useEffect(() => {
+    if (isFormModalOpen) {
+      Promise.all([fetchDevelopers(), fetchSupervisors()]).then(([devs, sups]) => {
+        setDevelopers(devs);
+        setSupervisors(sups);
+      }).catch(err => console.error('Failed to refresh developers/supervisors from database', err));
+    }
+  }, [isFormModalOpen]);
 
   // Handlers
   const handleFilterChange = (updated: Partial<ProjectFilterParams>) => {
@@ -335,6 +353,7 @@ function AppContent() {
         onOpenKeyboardShortcuts={() => setIsShortcutsModalOpen(true)}
         onOpenGeminiChat={() => setIsGeminiChatOpen(true)}
         onOpenVoiceChat={() => setIsVoiceChatOpen(true)}
+        onOpenPendingApprovals={() => setIsPendingApprovalsOpen(true)}
       />
 
       {/* Main Container */}
@@ -728,6 +747,7 @@ function AppContent() {
       {isFormModalOpen && (
         <ProjectFormModal
           project={formModalProject}
+          currentUser={currentUser}
           availableDevelopers={developers}
           availableSupervisors={supervisors}
           onClose={() => setIsFormModalOpen(false)}
@@ -785,6 +805,13 @@ function AppContent() {
           </div>
         </div>
       )}
+
+      {/* Pending Approvals Queue Modal (Admin) */}
+      <PendingApprovalsModal
+        isOpen={isPendingApprovalsOpen}
+        onClose={() => setIsPendingApprovalsOpen(false)}
+        onRefresh={() => loadProjects(filters)}
+      />
     </div>
   );
 }

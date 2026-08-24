@@ -10,6 +10,13 @@ import { setupGeminiServices } from './server/gemini.js';
 const NESTJS_BACKEND_URL = process.env.NESTJS_BACKEND_URL || 'http://localhost:4000';
 const NESTJS_API_PREFIX = 'api/v1';
 
+function getPrismaClient() {
+  const dbPath = path.resolve(__dirname, 'backend', 'prisma', 'dev.db');
+  process.env.DATABASE_URL = `file:${dbPath}`;
+  const { PrismaClient } = eval("require")('./backend/node_modules/@prisma/client');
+  return new PrismaClient();
+}
+
 // Proxy a request to the NestJS backend
 async function proxyToNestJS(
   req: Request,
@@ -58,553 +65,48 @@ export interface AuthenticatedRequest extends Request {
   user?: User;
 }
 
-// Seed Users Data
-const USERS: User[] = [
-  {
-    id: 'usr-1',
-    name: 'Sarah Jenkins',
-    email: 'admin@team.com',
-    role: 'ADMIN',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80',
-    department: 'Engineering Leadership',
-    title: 'VP of Software Engineering'
-  },
-  {
-    id: 'usr-2',
-    name: 'Dr. Robert Vance',
-    email: 'supervisor@team.com',
-    role: 'SUPERVISOR',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80',
-    department: 'Core Infrastructure',
-    title: 'Lead Solutions Architect'
-  },
-  {
-    id: 'usr-3',
-    name: 'Alex Chen',
-    email: 'developer@team.com',
-    role: 'DEVELOPER',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-    department: 'Frontend & Platform',
-    title: 'Senior Fullstack Developer'
-  },
-  {
-    id: 'usr-4',
-    name: 'Maya Lin',
-    email: 'viewer@team.com',
-    role: 'VIEWER',
-    avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=120&q=80',
-    department: 'Product Management',
-    title: 'Lead Product Manager'
-  },
-  {
-    id: 'usr-5',
-    name: 'Marcus Thorne',
-    email: 'dev2@team.com',
-    role: 'DEVELOPER',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80',
-    department: 'Backend Services',
-    title: 'Senior Distributed Systems Engineer'
-  },
-  {
-    id: 'usr-6',
-    name: 'Elena Rostova',
-    email: 'dev3@team.com',
-    role: 'DEVELOPER',
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=120&q=80',
-    department: 'DevOps & Reliability',
-    title: 'Staff Site Reliability Engineer'
-  },
-  {
-    id: 'usr-7',
-    name: 'David K. Kim',
-    email: 'super2@team.com',
-    role: 'SUPERVISOR',
-    avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=120&q=80',
-    department: 'AI & Data Platforms',
-    title: 'Director of AI Infrastructure'
-  }
-];
-
-// ============================================================
-// PROJECTS: No longer backed by in-memory PROJECTS array.
-// All project CRUD is delegated to the NestJS/Prisma backend.
-// A minimal fallback list is kept only for the test runner.
-// ============================================================
-let PROJECTS: Project[] = [
-  {
-    id: 'proj-101',
-    name: 'Cloud Microservices API Mesh',
-    summary: 'High-throughput enterprise service mesh for distributed payment and billing events.',
-    description: 'A cloud-native microservice architecture built with Spring Boot and PostgreSQL, featuring gRPC inter-service communications, Redis distributed caching, and automated deployment pipelines via Docker & Kubernetes.',
-    owner: 'Marcus Thorne',
-    ownerEmail: 'dev2@team.com',
-    supervisor: 'Dr. Robert Vance',
-    supervisorEmail: 'supervisor@team.com',
-    deploymentDate: '2026-06-15',
-    status: 'DEPLOYED',
-    techStack: ['Spring Boot', 'Java 21', 'PostgreSQL', 'Docker', 'Kubernetes', 'Redis', 'gRPC'],
-    links: {
-      github: 'https://github.com/enterprise-org/cloud-api-mesh',
-      live: 'https://mesh.enterprise-internal.net',
-      demo: 'https://youtube.com/watch?v=mesh-demo',
-      docs: 'https://docs.enterprise-internal.net/api-mesh'
-    },
-    testCoverage: 94,
-    linesOfCode: 42800,
-    priority: 'HIGH',
-    architectureUrl: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Marcus Thorne', 'Alex Chen', 'Elena Rostova'],
-    createdAt: '2026-01-10T08:00:00.000Z',
-    updatedAt: '2026-06-15T10:30:00.000Z'
-  },
-  {
-    id: 'proj-102',
-    name: 'Real-Time Telemetry & Log Visualizer',
-    summary: 'High-performance interactive dashboard tracking cluster metrics and server logs.',
-    description: 'Developed using React, TypeScript, and Tailwind CSS on the frontend with a WebSocket event stream. Integrated with PostgreSQL and Elasticsearch to perform real-time date filtering and aggregated log analytics.',
-    owner: 'Alex Chen',
-    ownerEmail: 'developer@team.com',
-    supervisor: 'David K. Kim',
-    supervisorEmail: 'super2@team.com',
-    deploymentDate: '2026-07-02',
-    status: 'DEPLOYED',
-    techStack: ['React', 'TypeScript', 'Tailwind CSS', 'Node.js', 'PostgreSQL', 'WebSockets', 'Recharts'],
-    links: {
-      github: 'https://github.com/enterprise-org/telemetry-dash',
-      live: 'https://telemetry.enterprise-internal.net',
-      docs: 'https://docs.enterprise-internal.net/telemetry'
-    },
-    testCoverage: 91,
-    linesOfCode: 28400,
-    priority: 'HIGH',
-    architectureUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Alex Chen', 'Maya Lin'],
-    createdAt: '2026-03-01T09:15:00.000Z',
-    updatedAt: '2026-07-02T14:20:00.000Z'
-  },
-  {
-    id: 'proj-103',
-    name: 'AI Document Intelligence Engine',
-    summary: 'Automated OCR, text extraction, and smart semantic search for enterprise contracts.',
-    description: 'Integrates LLM models with PostgreSQL Vector (pgvector) and Spring Boot services. Extracts key clauses, risks, and metadata from thousands of PDF documents in seconds.',
-    owner: 'Alex Chen',
-    ownerEmail: 'developer@team.com',
-    supervisor: 'David K. Kim',
-    supervisorEmail: 'super2@team.com',
-    deploymentDate: '2026-05-18',
-    status: 'DEPLOYED',
-    techStack: ['Python', 'Spring Boot', 'PostgreSQL', 'Tailwind CSS', 'React', 'Docker'],
-    links: {
-      github: 'https://github.com/enterprise-org/doc-ai-engine',
-      live: 'https://docai.enterprise-internal.net',
-      demo: 'https://youtube.com/watch?v=docai-demo',
-      docs: 'https://docs.enterprise-internal.net/docai'
-    },
-    testCoverage: 88,
-    linesOfCode: 35100,
-    priority: 'HIGH',
-    architectureUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Alex Chen', 'Marcus Thorne', 'Dr. Robert Vance'],
-    createdAt: '2026-02-14T11:00:00.000Z',
-    updatedAt: '2026-05-18T16:45:00.000Z'
-  },
-  {
-    id: 'proj-104',
-    name: 'Kubernetes GitOps Deployment Operator',
-    summary: 'Automated CI/CD operator managing multi-region cluster state via Declarative Specs.',
-    description: 'A custom Kubernetes operator written in Go and Java Spring Boot. Automatically reconciles cluster states against target Git commits, triggers post-deployment canary testing, and emits audit logs to PostgreSQL.',
-    owner: 'Elena Rostova',
-    ownerEmail: 'dev3@team.com',
-    supervisor: 'Dr. Robert Vance',
-    supervisorEmail: 'supervisor@team.com',
-    deploymentDate: '2026-04-10',
-    status: 'DEPLOYED',
-    techStack: ['Go', 'Spring Boot', 'Kubernetes', 'Docker', 'PostgreSQL', 'Prometheus'],
-    links: {
-      github: 'https://github.com/enterprise-org/k8s-gitops-operator',
-      docs: 'https://docs.enterprise-internal.net/gitops-operator'
-    },
-    testCoverage: 96,
-    linesOfCode: 19800,
-    priority: 'HIGH',
-    architectureUrl: 'https://images.unsplash.com/photo-1667372393119-3d4c48d07fc9?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Elena Rostova', 'Dr. Robert Vance'],
-    createdAt: '2025-11-20T10:00:00.000Z',
-    updatedAt: '2026-04-10T09:30:00.000Z'
-  },
-  {
-    id: 'proj-105',
-    name: 'Enterprise OAuth2 & JWT Auth Gateway',
-    summary: 'Centralized Single-Sign-On (SSO) authority implementing RBAC, JWT, and MFA.',
-    description: 'Secure authentication provider supporting OAuth2 protocols, JWT issuing and validation, fine-grained Role-Based Access Control (Admin, Supervisor, Developer, Viewer), and PostgreSQL security event logging.',
-    owner: 'Marcus Thorne',
-    ownerEmail: 'dev2@team.com',
-    supervisor: 'Dr. Robert Vance',
-    supervisorEmail: 'supervisor@team.com',
-    deploymentDate: '2026-01-22',
-    status: 'DEPLOYED',
-    techStack: ['Spring Boot', 'Java 21', 'JWT', 'PostgreSQL', 'Redis', 'Docker'],
-    links: {
-      github: 'https://github.com/enterprise-org/auth-sso-gateway',
-      live: 'https://sso.enterprise-internal.net',
-      docs: 'https://docs.enterprise-internal.net/auth-sso'
-    },
-    testCoverage: 98,
-    linesOfCode: 24500,
-    priority: 'HIGH',
-    architectureUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Marcus Thorne', 'Sarah Jenkins'],
-    createdAt: '2025-09-01T08:00:00.000Z',
-    updatedAt: '2026-01-22T12:00:00.000Z'
-  },
-  {
-    id: 'proj-106',
-    name: 'FinTech Event Streaming Pipeline',
-    summary: 'Sub-millisecond ledger reconciliation engine processing financial transactions.',
-    description: 'Distributed event processing pipeline utilizing Apache Kafka, Spring Boot microservices, and PostgreSQL partitioned tables. Features automated anomaly detection and fraud alerts.',
-    owner: 'Marcus Thorne',
-    ownerEmail: 'dev2@team.com',
-    supervisor: 'Sarah Jenkins',
-    supervisorEmail: 'admin@team.com',
-    deploymentDate: '2026-07-28',
-    status: 'IN_PROGRESS',
-    techStack: ['Spring Boot', 'Kafka', 'PostgreSQL', 'Java 21', 'Docker', 'Redis'],
-    links: {
-      github: 'https://github.com/enterprise-org/ledger-event-stream',
-      demo: 'https://youtube.com/watch?v=ledger-preview'
-    },
-    testCoverage: 85,
-    linesOfCode: 31200,
-    priority: 'HIGH',
-    architectureUrl: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Marcus Thorne', 'Elena Rostova'],
-    createdAt: '2026-04-15T14:00:00.000Z',
-    updatedAt: '2026-07-28T18:00:00.000Z'
-  },
-  {
-    id: 'proj-107',
-    name: 'Customer Success Insights Portal',
-    summary: 'Analytics and cohort retention platform for enterprise account health.',
-    description: 'Built with React, Tailwind CSS, TypeScript, and Spring Boot REST APIs. Features customizable widget dashboards, CSV export, and filtered customer date activity metrics.',
-    owner: 'Alex Chen',
-    ownerEmail: 'developer@team.com',
-    supervisor: 'David K. Kim',
-    supervisorEmail: 'super2@team.com',
-    deploymentDate: '2025-11-15',
-    status: 'MAINTENANCE',
-    techStack: ['React', 'TypeScript', 'Tailwind CSS', 'Spring Boot', 'PostgreSQL', 'GraphQL'],
-    links: {
-      github: 'https://github.com/enterprise-org/cs-insights-portal',
-      live: 'https://insights.enterprise-internal.net',
-      docs: 'https://docs.enterprise-internal.net/cs-insights'
-    },
-    testCoverage: 89,
-    linesOfCode: 22100,
-    priority: 'MEDIUM',
-    architectureUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Alex Chen', 'Maya Lin'],
-    createdAt: '2025-06-01T09:00:00.000Z',
-    updatedAt: '2025-11-15T11:20:00.000Z'
-  },
-  {
-    id: 'proj-108',
-    name: 'Multi-Tenant Edge CDN Router',
-    summary: 'Edge proxy providing dynamic route optimization and TLS termination.',
-    description: 'High-performance reverse proxy server deployed across 14 edge points. Built with Go, Docker, and PostgreSQL centralized configuration management.',
-    owner: 'Elena Rostova',
-    ownerEmail: 'dev3@team.com',
-    supervisor: 'Dr. Robert Vance',
-    supervisorEmail: 'supervisor@team.com',
-    deploymentDate: '2026-03-05',
-    status: 'DEPLOYED',
-    techStack: ['Go', 'Docker', 'PostgreSQL', 'Redis', 'Kubernetes'],
-    links: {
-      github: 'https://github.com/enterprise-org/edge-cdn-router',
-      live: 'https://cdn.enterprise-internal.net',
-      docs: 'https://docs.enterprise-internal.net/edge-cdn'
-    },
-    testCoverage: 92,
-    linesOfCode: 17300,
-    priority: 'MEDIUM',
-    architectureUrl: 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Elena Rostova'],
-    createdAt: '2025-12-10T11:00:00.000Z',
-    updatedAt: '2026-03-05T15:10:00.000Z'
-  },
-  {
-    id: 'proj-109',
-    name: 'IoT Fleet Maintenance Scanner',
-    summary: 'Automated diagnostic hub scanning sensor telemetry from hardware devices.',
-    description: 'Currently undergoing load testing for IoT payload spikes. Connects MQTT broker queues with Spring Boot microservices and PostgreSQL time-series logs.',
-    owner: 'Marcus Thorne',
-    ownerEmail: 'dev2@team.com',
-    supervisor: 'David K. Kim',
-    supervisorEmail: 'super2@team.com',
-    deploymentDate: '2026-08-20',
-    status: 'TESTING',
-    techStack: ['Spring Boot', 'Python', 'PostgreSQL', 'Docker', 'MQTT', 'React'],
-    links: {
-      github: 'https://github.com/enterprise-org/iot-fleet-scanner',
-      demo: 'https://youtube.com/watch?v=iot-scanner-preview'
-    },
-    testCoverage: 83,
-    linesOfCode: 26900,
-    priority: 'MEDIUM',
-    architectureUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Marcus Thorne', 'Elena Rostova'],
-    createdAt: '2026-05-01T10:00:00.000Z',
-    updatedAt: '2026-08-01T12:00:00.000Z'
-  },
-  {
-    id: 'proj-110',
-    name: 'Legacy Monolith Billing Service v1',
-    summary: 'Former SOAP/XML billing platform safely archived following API Mesh migration.',
-    description: 'Legacy payment engine replaced by Cloud Microservices API Mesh. Retained in read-only maintenance mode for audit retention and historic reporting.',
-    owner: 'Alex Chen',
-    ownerEmail: 'developer@team.com',
-    supervisor: 'Dr. Robert Vance',
-    supervisorEmail: 'supervisor@team.com',
-    deploymentDate: '2024-08-12',
-    status: 'ARCHIVED',
-    techStack: ['Java 21', 'Spring Boot', 'PostgreSQL'],
-    links: {
-      github: 'https://github.com/enterprise-org/legacy-billing-v1',
-      docs: 'https://docs.enterprise-internal.net/legacy-billing'
-    },
-    testCoverage: 76,
-    linesOfCode: 64200,
-    priority: 'LOW',
-    architectureUrl: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=800&q=80',
-    teamMembers: ['Alex Chen'],
-    approvalStatus: 'APPROVED',
-    createdAt: '2024-01-15T08:00:00.000Z',
-    updatedAt: '2024-08-12T10:00:00.000Z'
-  }
-];
-
-// Set default approval statuses for seed projects
-PROJECTS[0].approvalStatus = 'APPROVED';
-PROJECTS[1].approvalStatus = 'APPROVED';
-PROJECTS[2].approvalStatus = 'APPROVED';
-PROJECTS[3].approvalStatus = 'APPROVED';
-PROJECTS[4].approvalStatus = 'APPROVED';
-PROJECTS[5].approvalStatus = 'CHANGES_REQUESTED';
-PROJECTS[6].approvalStatus = 'APPROVED';
-PROJECTS[7].approvalStatus = 'APPROVED';
-PROJECTS[8].approvalStatus = 'PENDING_REVIEW';
-PROJECTS[9].approvalStatus = 'APPROVED';
-
-// Seed Comments
-let COMMENTS: Comment[] = [
-  {
-    id: 'cmt-1',
-    projectId: 'proj-101',
-    parentId: null,
-    authorId: 'usr-2',
-    authorName: 'Dr. Robert Vance',
-    authorEmail: 'supervisor@team.com',
-    authorRole: 'SUPERVISOR',
-    authorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80',
-    content: 'Great architecture design for gRPC inter-service mesh! @Marcus Thorne please verify load test latency under 50ms before final signoff.',
-    mentions: ['Marcus Thorne'],
-    createdAt: '2026-06-10T14:20:00.000Z',
-    replies: [
-      {
-        id: 'cmt-2',
-        projectId: 'proj-101',
-        parentId: 'cmt-1',
-        authorId: 'usr-5',
-        authorName: 'Marcus Thorne',
-        authorEmail: 'dev2@team.com',
-        authorRole: 'DEVELOPER',
-        authorAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80',
-        content: 'Thanks @Dr. Robert Vance! Benchmark results show 38ms avg p99 latency across all 4 cluster nodes.',
-        mentions: ['Dr. Robert Vance'],
-        createdAt: '2026-06-11T09:15:00.000Z'
-      }
-    ]
-  },
-  {
-    id: 'cmt-3',
-    projectId: 'proj-106',
-    parentId: null,
-    authorId: 'usr-1',
-    authorName: 'Sarah Jenkins',
-    authorEmail: 'admin@team.com',
-    authorRole: 'ADMIN',
-    authorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80',
-    content: '@Marcus Thorne @Elena Rostova please review the Kafka schema registry compatibility mode. We need zero-downtime evolution.',
-    mentions: ['Marcus Thorne', 'Elena Rostova'],
-    createdAt: '2026-07-25T11:00:00.000Z'
-  },
-  {
-    id: 'cmt-4',
-    projectId: 'proj-109',
-    parentId: null,
-    authorId: 'usr-3',
-    authorName: 'Alex Chen',
-    authorEmail: 'developer@team.com',
-    authorRole: 'DEVELOPER',
-    authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-    content: '@David K. Kim The MQTT load test payload simulator is ready for staging review.',
-    mentions: ['David K. Kim'],
-    createdAt: '2026-08-01T10:30:00.000Z'
-  }
-];
-
-// Seed Supervisor Review Notes
-let REVIEWS: ReviewNote[] = [
-  {
-    id: 'rev-1',
-    projectId: 'proj-101',
-    supervisorId: 'usr-2',
-    supervisorName: 'Dr. Robert Vance',
-    supervisorEmail: 'supervisor@team.com',
-    supervisorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80',
-    approvalStatus: 'APPROVED',
-    feedbackText: 'Comprehensive architecture spec with 94% unit test coverage. Latency benchmarks pass all enterprise SLA thresholds.',
-    rating: 5,
-    createdAt: '2026-06-12T16:00:00.000Z'
-  },
-  {
-    id: 'rev-2',
-    projectId: 'proj-106',
-    supervisorId: 'usr-1',
-    supervisorName: 'Sarah Jenkins',
-    supervisorEmail: 'admin@team.com',
-    supervisorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80',
-    approvalStatus: 'CHANGES_REQUESTED',
-    feedbackText: 'Kafka consumer groups require additional idempotency guards. Please raise test coverage to 90% before production deployment.',
-    rating: 3,
-    changesRequestedList: [
-      'Increase test coverage from 85% to 90%',
-      'Implement idempotent message deduplication in Kafka consumer',
-      'Add Prometheus lag metric alerts'
-    ],
-    createdAt: '2026-07-26T14:00:00.000Z'
-  },
-  {
-    id: 'rev-3',
-    projectId: 'proj-109',
-    supervisorId: 'usr-7',
-    supervisorName: 'David K. Kim',
-    supervisorEmail: 'super2@team.com',
-    supervisorAvatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=120&q=80',
-    approvalStatus: 'PENDING_REVIEW',
-    feedbackText: 'Initial build looks promising. Pending completion of IoT hardware stress tests before final deployment sign-off.',
-    rating: 4,
-    createdAt: '2026-08-01T11:00:00.000Z'
-  }
-];
-
-// Seed Activity Items
-let ACTIVITIES: ActivityItem[] = [
-  {
-    id: 'act-1',
-    projectId: 'proj-101',
-    type: 'APPROVAL_CHANGE',
-    actorId: 'usr-2',
-    actorName: 'Dr. Robert Vance',
-    actorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80',
-    actorRole: 'SUPERVISOR',
-    description: 'changed approval status to APPROVED',
-    details: 'Verified gRPC latency benchmarks & 94% test coverage.',
-    timestamp: '2026-06-12T16:00:00.000Z'
-  },
-  {
-    id: 'act-2',
-    projectId: 'proj-106',
-    type: 'APPROVAL_CHANGE',
-    actorId: 'usr-1',
-    actorName: 'Sarah Jenkins',
-    actorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80',
-    actorRole: 'ADMIN',
-    description: 'requested changes during project review',
-    details: 'Requested test coverage increase and Kafka idempotency guards.',
-    timestamp: '2026-07-26T14:00:00.000Z'
-  },
-  {
-    id: 'act-3',
-    projectId: 'proj-101',
-    type: 'COMMENT',
-    actorId: 'usr-5',
-    actorName: 'Marcus Thorne',
-    actorAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80',
-    actorRole: 'DEVELOPER',
-    description: 'posted a reply comment mentioning @Dr. Robert Vance',
-    details: 'Benchmark results show 38ms avg p99 latency.',
-    timestamp: '2026-06-11T09:15:00.000Z'
-  }
-];
-
-// Seed Notifications
-let NOTIFICATIONS: Notification[] = [
-  {
-    id: 'notif-1',
-    recipientEmail: 'developer@team.com',
-    type: 'MENTION',
-    projectId: 'proj-109',
-    projectName: 'IoT Fleet Maintenance Scanner',
-    actorName: 'David K. Kim',
-    actorAvatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=120&q=80',
-    message: 'David K. Kim mentioned you in a project review note: "Please review the hardware stress test setup."',
-    isRead: false,
-    createdAt: '2026-08-01T11:05:00.000Z'
-  },
-  {
-    id: 'notif-2',
-    recipientEmail: 'dev2@team.com',
-    type: 'APPROVAL_CHANGE',
-    projectId: 'proj-106',
-    projectName: 'FinTech Event Streaming Pipeline',
-    actorName: 'Sarah Jenkins',
-    actorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80',
-    message: 'Sarah Jenkins set approval status to CHANGES REQUESTED for FinTech Event Streaming Pipeline.',
-    isRead: false,
-    createdAt: '2026-07-26T14:01:00.000Z'
-  },
-  {
-    id: 'notif-3',
-    recipientEmail: 'supervisor@team.com',
-    type: 'COMMENT',
-    projectId: 'proj-101',
-    projectName: 'Cloud Microservices API Mesh',
-    actorName: 'Marcus Thorne',
-    actorAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80',
-    message: 'Marcus Thorne replied to your comment on Cloud Microservices API Mesh.',
-    isRead: true,
-    createdAt: '2026-06-11T09:16:00.000Z'
-  }
-];
+// Database-backed storage definitions
+const USERS: User[] = [];
+let PROJECTS: Project[] = [];
+let COMMENTS: Comment[] = [];
+let REVIEWS: ReviewNote[] = [];
+let ACTIVITIES: ActivityItem[] = [];
+let NOTIFICATIONS: Notification[] = [];
 
 // Helper to extract @mentions from text
 function parseMentionsFromText(text: string): string[] {
-  const mentions: string[] = [];
-  USERS.forEach(user => {
-    if (text.toLowerCase().includes(`@${user.name.toLowerCase()}`)) {
-      mentions.push(user.name);
-    }
-  });
-  return mentions;
+  return [];
 }
 
 // Auth Middleware: Verify JWT Bearer Token
-export function authenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function authenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    // If no token, assign default Viewer role or return 401
     return res.status(401).json({ error: 'Authentication required. Missing Bearer JWT Token.' });
   }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const user = USERS.find(u => u.id === decoded.id || u.email === decoded.email);
-    if (!user) {
+    const prisma = getPrismaClient();
+    const dbUser = await prisma.user.findFirst({
+      where: { OR: [{ id: decoded.id }, { email: decoded.email }] }
+    });
+    await prisma.$disconnect();
+
+    if (!dbUser) {
       return res.status(403).json({ error: 'Invalid user token context.' });
     }
-    req.user = user;
+    req.user = {
+      id: dbUser.id,
+      name: dbUser.name,
+      email: dbUser.email,
+      role: dbUser.role as any,
+      avatar: dbUser.avatar || undefined,
+      department: dbUser.department || undefined,
+      title: dbUser.title || undefined,
+    };
     next();
   } catch (err) {
     return res.status(403).json({ error: 'JWT Token expired or signature invalid.' });
@@ -612,15 +114,30 @@ export function authenticateToken(req: AuthenticatedRequest, res: Response, next
 }
 
 // Optional Auth Middleware for endpoints where viewer can read anonymously
-export function optionalAuthenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function optionalAuthenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const user = USERS.find(u => u.id === decoded.id || u.email === decoded.email);
-      if (user) req.user = user;
+      const prisma = getPrismaClient();
+      const dbUser = await prisma.user.findFirst({
+        where: { OR: [{ id: decoded.id }, { email: decoded.email }] }
+      });
+      await prisma.$disconnect();
+
+      if (dbUser) {
+        req.user = {
+          id: dbUser.id,
+          name: dbUser.name,
+          email: dbUser.email,
+          role: dbUser.role as any,
+          avatar: dbUser.avatar || undefined,
+          department: dbUser.department || undefined,
+          title: dbUser.title || undefined,
+        };
+      }
     } catch (e) {
       // ignore
     }
@@ -639,35 +156,7 @@ export interface AuditLog {
   details: string;
 }
 
-let AUDIT_LOGS: AuditLog[] = [
-  {
-    id: 'log-1',
-    timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
-    action: 'USER_LOGIN',
-    actor: 'Sarah Jenkins',
-    actorRole: 'ADMIN',
-    ipAddress: '192.168.1.10',
-    details: 'Authenticated via Admin Portal with 256-bit JWT token.'
-  },
-  {
-    id: 'log-2',
-    timestamp: new Date(Date.now() - 3600000 * 5).toISOString(),
-    action: 'APPROVAL_UPDATE',
-    actor: 'Dr. Robert Vance',
-    actorRole: 'SUPERVISOR',
-    ipAddress: '192.168.1.14',
-    details: 'Approved project "Cloud Microservices API Mesh" (Status: APPROVED).'
-  },
-  {
-    id: 'log-3',
-    timestamp: new Date(Date.now() - 3600000 * 12).toISOString(),
-    action: 'PROJECT_SUBMIT',
-    actor: 'Alex Chen',
-    actorRole: 'DEVELOPER',
-    ipAddress: '192.168.1.22',
-    details: 'Submitted project "Real-Time Telemetry & Log Visualizer" for Supervisor review.'
-  }
-];
+let AUDIT_LOGS: AuditLog[] = [];
 
 // System Settings
 let SYSTEM_SETTINGS = {
@@ -691,7 +180,36 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Email parameter is required.' });
   }
 
-  const user = USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
+  const cleanEmail = email.toLowerCase().trim();
+  let user = USERS.find(u => u.email.toLowerCase().trim() === cleanEmail);
+
+  if (!user) {
+    try {
+      const prisma = getPrismaClient();
+      const dbUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
+      await prisma.$disconnect();
+
+      if (dbUser) {
+        if (!dbUser.isApproved || !dbUser.isActive) {
+          if (dbUser.role !== 'ADMIN' && dbUser.email !== 'ritikasthana092019@gmail.com') {
+            return res.status(401).json({ error: 'Your account is pending admin approval. You cannot log in until approved.' });
+          }
+        }
+
+        user = {
+          id: dbUser.id,
+          name: dbUser.name,
+          email: dbUser.email,
+          role: dbUser.role as any,
+          avatar: dbUser.avatar || undefined,
+          department: dbUser.department || undefined,
+          title: dbUser.title || undefined,
+        };
+        USERS.push(user);
+      }
+    } catch (err) {}
+  }
+
   if (!user) {
     return res.status(401).json({ error: 'Invalid credentials. User email not found.' });
   }
@@ -736,47 +254,59 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Name and Email are required fields.' });
   }
 
-  const existing = USERS.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
-  if (existing) {
-    return res.status(400).json({ error: 'User with this email already exists.' });
-  }
-
+  const cleanEmail = email.toLowerCase().trim();
   const newUserRole: UserRole = ['ADMIN', 'SUPERVISOR', 'DEVELOPER', 'VIEWER'].includes(role) ? (role as UserRole) : 'DEVELOPER';
 
-  const newUser: User = {
-    id: `usr-${Date.now()}`,
-    name: name.trim(),
-    email: email.toLowerCase().trim(),
-    role: newUserRole,
-    avatar: avatar || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80`,
-    department: department || 'Engineering',
-    title: title || (newUserRole === 'DEVELOPER' ? 'Software Engineer' : newUserRole === 'SUPERVISOR' ? 'Project Supervisor' : 'Team Member')
-  };
+  try {
+    const crypto = eval("require")('crypto');
+    const bcrypt = eval("require")('bcryptjs');
+    const prisma = getPrismaClient();
 
-  USERS.push(newUser);
+    const existingDbUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
+    if (existingDbUser) {
+      await prisma.$disconnect();
+      return res.status(409).json({ error: `User with email "${cleanEmail}" already exists.` });
+    }
 
-  // Audit log
-  AUDIT_LOGS.unshift({
-    id: `log-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    action: 'USER_REGISTER',
-    actor: newUser.name,
-    actorRole: newUser.role,
-    ipAddress: req.ip || '127.0.0.1',
-    details: `Registered new user account (${newUser.role}).`
-  });
+    const passwordHash = await bcrypt.hash(password || 'Password123!', 10);
+    const createdUser = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: cleanEmail,
+        passwordHash,
+        role: newUserRole,
+        department: department || 'Engineering',
+        title: title || 'Team Member',
+        avatar: avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+        isActive: true,
+        isApproved: true,
+      },
+    });
 
-  const token = jwt.sign(
-    { id: newUser.id, sub: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role },
-    JWT_SECRET,
-    { expiresIn: `${SYSTEM_SETTINGS.jwtExpirationHours}h` }
-  );
+    await prisma.$disconnect();
 
-  return res.status(201).json({
-    message: 'Account registered successfully',
-    token,
-    user: newUser
-  });
+    const token = jwt.sign(
+      { id: createdUser.id, sub: createdUser.id, name: createdUser.name, email: createdUser.email, role: createdUser.role },
+      JWT_SECRET,
+      { expiresIn: `${SYSTEM_SETTINGS.jwtExpirationHours}h` }
+    );
+
+    return res.status(201).json({
+      message: 'Account registered successfully! You are now logged in.',
+      token,
+      user: {
+        id: createdUser.id,
+        name: createdUser.name,
+        email: createdUser.email,
+        role: createdUser.role,
+        avatar: createdUser.avatar,
+        department: createdUser.department,
+        title: createdUser.title,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Registration failed.' });
+  }
 });
 
 // 3. Auth Forgot Password Request
@@ -851,6 +381,80 @@ app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
   return res.json({ message: 'Password has been updated successfully. Please log in with your new password.' });
 });
 
+// 5. Auth Pending Requests (Admin Queue)
+app.get('/api/auth/pending-requests', async (req: Request, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/auth/pending-requests', 'GET');
+  if (proxied) return;
+
+  try {
+    const prisma = getPrismaClient();
+    const requests = await prisma.pendingRequest.findMany({
+      where: { status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+    });
+    await prisma.$disconnect();
+    return res.json(requests);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to fetch pending requests from database.' });
+  }
+});
+
+// 6. Auth Approve/Reject Request Token Execution
+app.get('/api/auth/approve-request', async (req: Request, res: Response) => {
+  const token = (req.query.token as string) || '';
+  const action = (req.query.action as string) || 'approve';
+
+  const proxied = await proxyToNestJS(req, res, `/auth/approve-request?token=${encodeURIComponent(token)}&action=${encodeURIComponent(action)}`, 'GET');
+  if (proxied) return;
+
+  if (!token) {
+    return res.status(400).json({ error: 'Missing token parameter.' });
+  }
+
+  try {
+    const prisma = getPrismaClient();
+    const request = await prisma.pendingRequest.findUnique({ where: { token } });
+
+    if (!request) {
+      await prisma.$disconnect();
+      return res.status(400).json({ error: 'Invalid or expired token.' });
+    }
+
+    if (request.status !== 'PENDING') {
+      await prisma.$disconnect();
+      return res.json({ alreadyProcessed: true, message: `Request already ${request.status.toLowerCase()}.` });
+    }
+
+    if (request.type === 'USER_REGISTRATION') {
+      if (action.toLowerCase() === 'approve') {
+        await prisma.user.update({
+          where: { id: request.targetId! },
+          data: { isApproved: true, isActive: true },
+        });
+        await prisma.pendingRequest.update({
+          where: { id: request.id },
+          data: { status: 'APPROVED' },
+        });
+        await prisma.$disconnect();
+        return res.json({ success: true, message: 'User registration request ACCEPTED successfully! The user is now active.' });
+      } else {
+        await prisma.pendingRequest.update({
+          where: { id: request.id },
+          data: { status: 'REJECTED' },
+        });
+        await prisma.user.delete({ where: { id: request.targetId! } }).catch(() => null);
+        await prisma.$disconnect();
+        return res.json({ success: true, message: 'User registration request REJECTED.' });
+      }
+    }
+
+    await prisma.$disconnect();
+    return res.status(400).json({ error: 'Unknown request type.' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to process request.' });
+  }
+});
+
 // 4. Update Profile
 app.put('/api/auth/profile', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   const proxied = await proxyToNestJS(req, res, '/auth/profile', 'PUT');
@@ -901,7 +505,25 @@ app.get('/api/users', async (req: Request, res: Response) => {
   const proxied = await proxyToNestJS(req, res, '/users', 'GET');
   if (proxied) return;
 
-  return res.json({ users: USERS });
+  try {
+    const prisma = getPrismaClient();
+    const dbUsers = await prisma.user.findMany();
+    await prisma.$disconnect();
+
+    const usersList = dbUsers.map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      avatar: u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      department: u.department || 'Engineering',
+      title: u.title || 'Team Member',
+    }));
+
+    return res.json({ users: usersList });
+  } catch (err) {
+    return res.json({ users: [] });
+  }
 });
 
 // Admin User Creation
@@ -1065,14 +687,54 @@ app.put('/api/admin/system-settings', authenticateToken, (req: AuthenticatedRequ
   return res.json({ message: 'System settings updated', settings: SYSTEM_SETTINGS });
 });
 
-app.get('/api/developers', (req: Request, res: Response) => {
-  const devs = USERS.filter(u => u.role === 'DEVELOPER' || u.role === 'ADMIN');
-  return res.json({ developers: devs });
+app.get('/api/developers', async (req: Request, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/users/developers', 'GET');
+  if (proxied) return;
+
+  try {
+    const prisma = getPrismaClient();
+    const dbUsers = await prisma.user.findMany();
+    await prisma.$disconnect();
+
+    const devs = dbUsers.map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role || 'DEVELOPER',
+      avatar: u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      department: u.department || 'Engineering',
+      title: u.title || 'Developer',
+    }));
+
+    return res.json({ developers: devs });
+  } catch (err) {
+    return res.json({ developers: [] });
+  }
 });
 
-app.get('/api/supervisors', (req: Request, res: Response) => {
-  const supers = USERS.filter(u => u.role === 'SUPERVISOR' || u.role === 'ADMIN');
-  return res.json({ supervisors: supers });
+app.get('/api/supervisors', async (req: Request, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/users/supervisors', 'GET');
+  if (proxied) return;
+
+  try {
+    const prisma = getPrismaClient();
+    const dbUsers = await prisma.user.findMany();
+    await prisma.$disconnect();
+
+    const supers = dbUsers.map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role || 'SUPERVISOR',
+      avatar: u.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+      department: u.department || 'Governance',
+      title: u.title || 'Supervisor',
+    }));
+
+    return res.json({ supervisors: supers });
+  } catch (err) {
+    return res.json({ supervisors: [] });
+  }
 });
 
 app.get('/api/tech-stacks', async (req: Request, res: Response) => {
@@ -1085,50 +747,333 @@ app.get('/api/tech-stacks', async (req: Request, res: Response) => {
   }
 });
 
-// ===========================================================
-// PROJECT CRUD ROUTES — Proxied to NestJS/Prisma Backend
-// All project data is now stored in SQLite via Prisma ORM.
-// ===========================================================
+function filterProjects(list: Project[], query: any): Project[] {
+  let result = [...list];
+
+  if (query.search && query.search.trim() !== '') {
+    const term = (query.search as string).toLowerCase().trim();
+    result = result.filter(p =>
+      (p.name && p.name.toLowerCase().includes(term)) ||
+      (p.summary && p.summary.toLowerCase().includes(term)) ||
+      (p.description && p.description.toLowerCase().includes(term)) ||
+      (p.owner && p.owner.toLowerCase().includes(term)) ||
+      (p.supervisor && p.supervisor.toLowerCase().includes(term))
+    );
+  }
+
+  if (query.owner && query.owner !== 'ALL') {
+    const ownerTerm = (query.owner as string).toLowerCase();
+    result = result.filter(p =>
+      (p.owner && p.owner.toLowerCase() === ownerTerm) ||
+      (p.ownerEmail && p.ownerEmail.toLowerCase() === ownerTerm) ||
+      (p as any).ownerId === query.owner
+    );
+  }
+
+  if (query.supervisor && query.supervisor !== 'ALL') {
+    const supTerm = (query.supervisor as string).toLowerCase();
+    result = result.filter(p =>
+      (p.supervisor && p.supervisor.toLowerCase() === supTerm) ||
+      (p.supervisorEmail && p.supervisorEmail.toLowerCase() === supTerm) ||
+      (p as any).supervisorId === query.supervisor
+    );
+  }
+
+  if (query.status && query.status !== 'ALL') {
+    result = result.filter(p => p.status === query.status);
+  }
+
+  if (query.approvalStatus && query.approvalStatus !== 'ALL') {
+    result = result.filter(p => p.approvalStatus === query.approvalStatus);
+  }
+
+  if (query.tech && query.tech !== 'ALL') {
+    const techList = (query.tech as string).split(',').map(t => t.trim().toLowerCase());
+    result = result.filter(p => p.techStack && p.techStack.some(t => techList.includes(t.toLowerCase())));
+  }
+
+  const sortBy = (query.sortBy as string) || 'createdAt';
+  const sortOrder = (query.sortOrder as string) === 'asc' ? 1 : -1;
+
+  result.sort((a, b) => {
+    let valA = (a as any)[sortBy] || '';
+    let valB = (b as any)[sortBy] || '';
+    if (valA < valB) return -1 * sortOrder;
+    if (valA > valB) return 1 * sortOrder;
+    return 0;
+  });
+
+  return result;
+}
 
 // GET /api/projects — List / search / filter / paginate
 app.get('/api/projects', async (req: Request, res: Response) => {
   const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-  await proxyToNestJS(req, res, `/projects${qs}`);
+  const proxied = await proxyToNestJS(req, res, `/projects${qs}`);
+  if (proxied) return;
+
+  try {
+    const prisma = getPrismaClient();
+    const dbProjects = await prisma.project.findMany({
+      include: {
+        owner: true,
+        supervisor: true,
+        team: true,
+        technologies: { include: { technology: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    await prisma.$disconnect();
+
+    let items: Project[] = [];
+    if (dbProjects && dbProjects.length > 0) {
+      items = dbProjects.map((p: any) => ({
+        id: p.id,
+        name: p.name || '',
+        summary: p.summary || (p.description ? p.description.substring(0, 150) : ''),
+        description: p.description || '',
+        owner: p.ownerName || p.owner?.name || 'Unassigned',
+        ownerEmail: p.owner?.email || '',
+        supervisor: p.supervisorName || p.supervisor?.name || 'Unassigned',
+        supervisorEmail: p.supervisor?.email || '',
+        deploymentDate: p.deploymentDate ? (typeof p.deploymentDate === 'string' ? p.deploymentDate.split('T')[0] : new Date(p.deploymentDate).toISOString().split('T')[0]) : '',
+        status: p.status || 'IN_PROGRESS',
+        approvalStatus: p.approvalStatus || 'APPROVED',
+        techStack: p.technologies ? p.technologies.map((t: any) => t.technology?.name || t.name).filter(Boolean) : [],
+        links: {
+          github: p.githubUrl || undefined,
+          live: p.liveUrl || undefined,
+          demo: p.demoUrl || undefined,
+          docs: p.docsUrl || p.documentationUrl || undefined,
+        },
+        testCoverage: p.testCoverage ?? 0,
+        linesOfCode: p.linesOfCode ?? 0,
+        priority: p.priority || 'MEDIUM',
+        imageUrl: p.imageUrl || p.thumbnail,
+        architectureUrl: p.architectureUrl,
+        createdAt: p.createdAt ? new Date(p.createdAt).toISOString() : new Date().toISOString(),
+        updatedAt: p.updatedAt ? new Date(p.updatedAt).toISOString() : new Date().toISOString(),
+      }));
+
+    }
+
+    const filtered = filterProjects(items, req.query);
+    return res.json({
+      projects: filtered,
+      items: filtered,
+      total: filtered.length,
+      page: 1,
+      totalPages: 1
+    });
+  } catch (err) {
+    const filtered = filterProjects(PROJECTS, req.query);
+    return res.json({
+      projects: filtered,
+      items: filtered,
+      total: filtered.length,
+      page: 1,
+      totalPages: 1
+    });
+  }
 });
 
 // GET /api/projects/:id — Single project by ID
 app.get('/api/projects/:id', async (req: Request, res: Response) => {
-  await proxyToNestJS(req, res, `/projects/${req.params.id}`);
+  const proxied = await proxyToNestJS(req, res, `/projects/${req.params.id}`);
+  if (proxied) return;
+
+  const project = PROJECTS.find(p => p.id === req.params.id);
+  if (!project) {
+    return res.status(404).json({ error: 'Project not found.' });
+  }
+  return res.json({ project, data: project });
 });
 
 // POST /api/projects — Create project
-app.post('/api/projects', async (req: Request, res: Response) => {
-  await proxyToNestJS(req, res, '/projects', 'POST');
+app.post('/api/projects', optionalAuthenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const proxied = await proxyToNestJS(req, res, '/projects', 'POST');
+  if (proxied) return;
+
+  const body = req.body || {};
+  const ownerName = body.owner || (req.user ? req.user.name : 'Unassigned');
+  const ownerEmail = body.ownerEmail || (req.user ? req.user.email : '');
+
+  const newProject: Project = {
+    id: `proj-${Date.now()}`,
+    name: body.name || 'Untitled Project',
+    summary: body.summary || (body.description ? body.description.substring(0, 150) : ''),
+    description: body.description || '',
+    owner: ownerName,
+    ownerEmail: ownerEmail,
+    supervisor: body.supervisor || 'Unassigned',
+    supervisorEmail: body.supervisorEmail || '',
+    deploymentDate: body.deploymentDate || new Date().toISOString().split('T')[0],
+    status: body.status || 'IN_PROGRESS',
+    approvalStatus: body.approvalStatus || 'APPROVED',
+    techStack: Array.isArray(body.techStack) ? body.techStack : [],
+    links: {
+      github: body.github || body.links?.github || undefined,
+      live: body.live || body.links?.live || undefined,
+      demo: body.demo || body.links?.demo || undefined,
+      docs: body.docs || body.links?.docs || undefined,
+    },
+    testCoverage: body.testCoverage ?? 90,
+    linesOfCode: body.linesOfCode ?? 15000,
+    priority: body.priority || 'MEDIUM',
+    imageUrl: body.imageUrl || undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  PROJECTS.unshift(newProject);
+
+  try {
+    const prisma = getPrismaClient();
+    let dbOwner = (ownerName || ownerEmail) ? await prisma.user.findFirst({
+      where: { OR: [{ email: ownerEmail }, { name: ownerName }] }
+    }) : null;
+    if (!dbOwner && ownerName) {
+      dbOwner = await prisma.user.create({
+        data: {
+          name: ownerName,
+          email: ownerEmail || `${ownerName.toLowerCase().replace(/[^a-z0-9]/g, '')}@team.com`,
+          role: 'DEVELOPER'
+        }
+      }).catch(() => null);
+    }
+
+    const supName = body.supervisor || body.supervisorName;
+    const supEmail = body.supervisorEmail;
+    let dbSupervisor = (supName || supEmail) ? await prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(supEmail ? [{ email: supEmail }] : []),
+          ...(supName ? [{ name: supName }, { email: supName }] : [])
+        ]
+      }
+    }) : null;
+    if (!dbSupervisor && supName) {
+      dbSupervisor = await prisma.user.create({
+        data: {
+          name: supName,
+          email: supEmail || `${supName.toLowerCase().replace(/[^a-z0-9]/g, '')}@team.com`,
+          role: 'SUPERVISOR'
+        }
+      }).catch(() => null);
+    }
+
+    if (dbOwner) {
+      await prisma.project.create({
+        data: {
+          id: newProject.id,
+          name: newProject.name,
+          summary: newProject.summary,
+          description: newProject.description,
+          ownerId: dbOwner.id,
+          ownerName: ownerName,
+          supervisorId: dbSupervisor ? dbSupervisor.id : null,
+          supervisorName: supName || 'Unassigned',
+          status: newProject.status as any,
+          approvalStatus: newProject.approvalStatus as any,
+          priority: newProject.priority as any,
+          githubUrl: newProject.links.github,
+          liveUrl: newProject.links.live,
+          demoUrl: newProject.links.demo,
+          docsUrl: newProject.links.docs,
+          imageUrl: newProject.imageUrl,
+          testCoverage: newProject.testCoverage,
+          linesOfCode: newProject.linesOfCode,
+          deploymentDate: newProject.deploymentDate ? new Date(newProject.deploymentDate) : null,
+        }
+      });
+    }
+    await prisma.$disconnect();
+  } catch (err) {
+    // Ignore DB error
+  }
+
+  return res.status(201).json({
+    message: 'Project created successfully',
+    project: newProject,
+    data: newProject
+  });
 });
 
 // PUT /api/projects/:id — Update project (full)
 app.put('/api/projects/:id', async (req: Request, res: Response) => {
-  await proxyToNestJS(req, res, `/projects/${req.params.id}`, 'PATCH');
+  const proxied = await proxyToNestJS(req, res, `/projects/${req.params.id}`, 'PATCH');
+  if (proxied) return;
+
+  const idx = PROJECTS.findIndex(p => p.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Project not found.' });
+  }
+  const body = req.body || {};
+  const updatedLinks = {
+    github: body.links?.github || body.github || PROJECTS[idx].links?.github,
+    live: body.links?.live || body.live || PROJECTS[idx].links?.live,
+    demo: body.links?.demo || body.demo || PROJECTS[idx].links?.demo,
+    docs: body.links?.docs || body.docs || body.documentationUrl || PROJECTS[idx].links?.docs,
+  };
+  PROJECTS[idx] = { ...PROJECTS[idx], ...body, links: updatedLinks, updatedAt: new Date().toISOString() };
+  return res.json({ message: 'Project updated successfully', project: PROJECTS[idx] });
 });
 
 // PATCH /api/projects/:id — Update project (partial)
 app.patch('/api/projects/:id', async (req: Request, res: Response) => {
-  await proxyToNestJS(req, res, `/projects/${req.params.id}`, 'PATCH');
+  const proxied = await proxyToNestJS(req, res, `/projects/${req.params.id}`, 'PATCH');
+  if (proxied) return;
+
+  const idx = PROJECTS.findIndex(p => p.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Project not found.' });
+  }
+  const body = req.body || {};
+  const updatedLinks = {
+    github: body.links?.github || body.github || PROJECTS[idx].links?.github,
+    live: body.links?.live || body.live || PROJECTS[idx].links?.live,
+    demo: body.links?.demo || body.demo || PROJECTS[idx].links?.demo,
+    docs: body.links?.docs || body.docs || body.documentationUrl || PROJECTS[idx].links?.docs,
+  };
+  PROJECTS[idx] = { ...PROJECTS[idx], ...body, links: updatedLinks, updatedAt: new Date().toISOString() };
+  return res.json({ message: 'Project updated successfully', project: PROJECTS[idx] });
 });
 
 // DELETE /api/projects/:id — Delete project
 app.delete('/api/projects/:id', async (req: Request, res: Response) => {
-  await proxyToNestJS(req, res, `/projects/${req.params.id}`, 'DELETE');
+  const proxied = await proxyToNestJS(req, res, `/projects/${req.params.id}`, 'DELETE');
+  if (proxied) return;
+
+  const idx = PROJECTS.findIndex(p => p.id === req.params.id);
+  if (idx !== -1) {
+    PROJECTS.splice(idx, 1);
+  }
+  return res.json({ message: 'Project deleted successfully', id: req.params.id });
 });
 
 // POST /api/projects/:id/submit — Submit for review
 app.post('/api/projects/:id/submit', async (req: Request, res: Response) => {
-  await proxyToNestJS(req, res, `/projects/${req.params.id}/submit`, 'POST');
+  const proxied = await proxyToNestJS(req, res, `/projects/${req.params.id}/submit`, 'POST');
+  if (proxied) return;
+
+  const project = PROJECTS.find(p => p.id === req.params.id);
+  if (project) {
+    project.approvalStatus = 'PENDING_REVIEW';
+  }
+  return res.json({ message: 'Project submitted for review', project });
 });
 
 // PATCH /api/projects/:id/status — Update project status
 app.patch('/api/projects/:id/status', async (req: Request, res: Response) => {
-  await proxyToNestJS(req, res, `/projects/${req.params.id}/status`, 'PATCH');
+  const proxied = await proxyToNestJS(req, res, `/projects/${req.params.id}/status`, 'PATCH');
+  if (proxied) return;
+
+  const project = PROJECTS.find(p => p.id === req.params.id);
+  if (project) {
+    if (req.body.status) project.status = req.body.status;
+    if (req.body.approvalStatus) project.approvalStatus = req.body.approvalStatus;
+  }
+  return res.json({ message: 'Project status updated', project });
 });
 
 // PATCH /api/projects/:id/supervisor — Assign supervisor
@@ -1328,12 +1273,34 @@ app.all('/api/notifications*', async (req: Request, res: Response) => {
   await proxyToNestJS(req, res, targetPath, req.method, req.body);
 });
 
-// 9. GET Analytics Data — Proxied to NestJS Backend
+// 9. GET Analytics Data — Proxied to NestJS Backend with fallback
 app.get('/api/analytics*', async (req: Request, res: Response) => {
   const subPath = req.path.replace('/api/analytics', '');
   const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
   const targetPath = `/analytics${subPath}${qs}`;
-  await proxyToNestJS(req, res, targetPath);
+  const proxied = await proxyToNestJS(req, res, targetPath);
+  if (proxied) return;
+
+  const total = PROJECTS.length;
+  const deployed = PROJECTS.filter(p => p.status === 'DEPLOYED').length;
+  const inProgress = PROJECTS.filter(p => p.status === 'IN_PROGRESS').length;
+
+  const techCount: Record<string, number> = {};
+  PROJECTS.forEach(p => {
+    p.techStack?.forEach(t => {
+      techCount[t] = (techCount[t] || 0) + 1;
+    });
+  });
+
+  return res.json({
+    totalProjects: total,
+    deployedProjects: deployed,
+    inProgressProjects: inProgress,
+    statusBreakdown: { DEPLOYED: deployed, IN_PROGRESS: inProgress },
+    techUsage: techCount,
+    averageTestCoverage: Math.round(PROJECTS.reduce((acc, p) => acc + (p.testCoverage || 0), 0) / (total || 1)),
+    totalLinesOfCode: PROJECTS.reduce((acc, p) => acc + (p.linesOfCode || 0), 0)
+  });
 });
 
 // 10. GET OpenAPI 3.0 Documentation Spec

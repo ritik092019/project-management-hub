@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Project, ProjectStatus, ApprovalStatus, User } from '../types.js';
+import { fetchDevelopers, fetchSupervisors } from '../services/api.js';
 import {
   X,
   Plus,
@@ -22,6 +23,7 @@ import {
 
 interface ProjectFormModalProps {
   project?: Project | null; // null if adding new
+  currentUser?: User | null;
   availableDevelopers: User[];
   availableSupervisors: User[];
   onClose: () => void;
@@ -30,6 +32,7 @@ interface ProjectFormModalProps {
 
 export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   project,
+  currentUser,
   availableDevelopers,
   availableSupervisors,
   onClose,
@@ -48,9 +51,9 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   const [deploymentDate, setDeploymentDate] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('DEPLOYED');
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus>('APPROVED');
-  const [priority, setPriority] = useState<'HIGH' | 'MEDIUM' | 'LOW'>('HIGH');
-  const [testCoverage, setTestCoverage] = useState(94);
-  const [linesOfCode, setLinesOfCode] = useState(42800);
+  const [priority, setPriority] = useState<'HIGH' | 'MEDIUM' | 'LOW'>('MEDIUM');
+  const [testCoverage, setTestCoverage] = useState(85);
+  const [linesOfCode, setLinesOfCode] = useState(12000);
 
   // Tech stack tags
   const [techStack, setTechStack] = useState<string[]>([]);
@@ -65,6 +68,64 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
 
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const [devList, setDevList] = useState<User[]>(availableDevelopers);
+  const [supList, setSupList] = useState<User[]>(availableSupervisors);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadUsersFromDb = async () => {
+      try {
+        const [devs, sups] = await Promise.all([fetchDevelopers(), fetchSupervisors()]);
+        if (isMounted) {
+          if (devs && devs.length > 0) setDevList(devs);
+          if (sups && sups.length > 0) setSupList(sups);
+        }
+      } catch (err) {
+        console.error('Failed to load DB users in ProjectFormModal', err);
+      }
+    };
+    loadUsersFromDb();
+    return () => { isMounted = false; };
+  }, []);
+
+  useEffect(() => {
+    if (availableDevelopers.length > 0) setDevList(availableDevelopers);
+    if (availableSupervisors.length > 0) setSupList(availableSupervisors);
+  }, [availableDevelopers, availableSupervisors]);
+
+  useEffect(() => {
+    if (project) {
+      setName(project.name || '');
+      setSummary(project.summary || '');
+      setDescription(project.description || '');
+      setCategory((project as any).category || 'WEB_APP');
+      setOwner(project.owner || '');
+      setOwnerEmail(project.ownerEmail || '');
+      setSupervisor(project.supervisor || '');
+      setSupervisorEmail(project.supervisorEmail || '');
+      setDeploymentDate(project.deploymentDate || '');
+      setStatus(project.status || 'DEPLOYED');
+      setApprovalStatus(project.approvalStatus || 'APPROVED');
+      setPriority(project.priority || 'MEDIUM');
+      setTestCoverage(project.testCoverage ?? 85);
+      setLinesOfCode(project.linesOfCode ?? 12000);
+      setTechStack(project.techStack || []);
+      setImageUrl(project.imageUrl || project.architectureUrl || '');
+      setGithub(project.links?.github || '');
+      setLive(project.links?.live || '');
+      setDemo(project.links?.demo || '');
+      setDocs(project.links?.docs || (project as any).documentationUrl || '');
+    } else {
+      const todayStr = new Date().toISOString().split('T')[0];
+      setDeploymentDate(todayStr);
+      setTechStack(['Spring Boot', 'Docker', 'Kubernetes', 'Java 21', 'gRPC', 'Redis', 'PostgreSQL']);
+      setOwner('');
+      setOwnerEmail('');
+      setSupervisor('');
+      setSupervisorEmail('');
+    }
+  }, [project]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -115,46 +176,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (project) {
-      setName(project.name || '');
-      setSummary(project.summary || '');
-      setDescription(project.description || '');
-      setCategory((project as any).category || 'WEB_APP');
-      setOwner(project.owner || '');
-      setOwnerEmail(project.ownerEmail || '');
-      setSupervisor(project.supervisor || '');
-      setSupervisorEmail(project.supervisorEmail || '');
-      setDeploymentDate(project.deploymentDate || '');
-      setStatus(project.status || 'DEPLOYED');
-      setApprovalStatus(project.approvalStatus || 'APPROVED');
-      setPriority(project.priority || 'HIGH');
-      setTestCoverage(project.testCoverage ?? 94);
-      setLinesOfCode(project.linesOfCode ?? 42800);
-      setTechStack(project.techStack || []);
-      setImageUrl(project.imageUrl || project.architectureUrl || '');
-      setGithub(project.links?.github || '');
-      setLive(project.links?.live || '');
-      setDemo(project.links?.demo || '');
-      setDocs(project.links?.docs || '');
-    } else {
-      // Default initial values for new project
-      const todayStr = new Date().toISOString().split('T')[0];
-      setDeploymentDate(todayStr);
-      setTechStack(['Spring Boot', 'Docker', 'Kubernetes', 'Java 21', 'gRPC', 'Redis', 'PostgreSQL']);
-      if (availableDevelopers.length > 0) {
-        setOwner(availableDevelopers[0].name);
-        setOwnerEmail(availableDevelopers[0].email);
-      }
-      if (availableSupervisors.length > 0) {
-        setSupervisor(availableSupervisors[0].name);
-        setSupervisorEmail(availableSupervisors[0].email);
-      }
-    }
-  }, [project, availableDevelopers, availableSupervisors]);
-
   const handleOwnerSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const dev = availableDevelopers.find(d => d.name === e.target.value);
+    const dev = devList.find(d => d.name === e.target.value);
     if (dev) {
       setOwner(dev.name);
       setOwnerEmail(dev.email);
@@ -164,7 +187,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   };
 
   const handleSupervisorSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const sup = availableSupervisors.find(s => s.name === e.target.value);
+    const sup = supList.find(s => s.name === e.target.value);
     if (sup) {
       setSupervisor(sup.name);
       setSupervisorEmail(sup.email);
@@ -225,6 +248,11 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
         techStack,
         imageUrl: imageUrl.trim() || undefined,
         architectureUrl: imageUrl.trim() || undefined,
+        githubUrl: github.trim() || undefined,
+        liveUrl: live.trim() || undefined,
+        demoUrl: demo.trim() || undefined,
+        docsUrl: docs.trim() || undefined,
+        documentationUrl: docs.trim() || undefined,
         links: {
           github: github.trim() || undefined,
           live: live.trim() || undefined,
@@ -376,36 +404,30 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1 flex items-center gap-1">
                   <UserIcon className="w-3.5 h-3.5 text-emerald-400" /> Developer (Owner) *
                 </label>
-                <select
+                <input
                   id="form-input-owner"
+                  type="text"
+                  placeholder="e.g. Ritika Asthana"
                   value={owner}
-                  onChange={handleOwnerSelect}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {availableDevelopers.map(dev => (
-                    <option key={dev.id} value={dev.name}>
-                      {dev.name} ({dev.email})
-                    </option>
-                  ))}
-                </select>
+                  onChange={e => setOwner(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
               </div>
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1 flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-blue-400" /> Supervisor *
                 </label>
-                <select
+                <input
                   id="form-input-supervisor"
+                  type="text"
+                  placeholder="e.g. Alok kumar"
                   value={supervisor}
-                  onChange={handleSupervisorSelect}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {availableSupervisors.map(sup => (
-                    <option key={sup.id} value={sup.name}>
-                      {sup.name} ({sup.email})
-                    </option>
-                  ))}
-                </select>
+                  onChange={e => setSupervisor(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
               </div>
             </div>
           </div>
