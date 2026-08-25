@@ -2,16 +2,9 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const envPaths = [
   path.resolve(process.cwd(), '.env'),
   path.resolve(process.cwd(), 'backend', '.env'),
-  path.resolve(__dirname, '.env'),
-  path.resolve(__dirname, '..', '.env'),
 ];
 for (const envFile of envPaths) {
   if (fs.existsSync(envFile)) {
@@ -31,7 +24,7 @@ const NESTJS_BACKEND_URL = process.env.NESTJS_BACKEND_URL || 'http://localhost:4
 const NESTJS_API_PREFIX = 'api/v1';
 
 function getPrismaClient() {
-  const dbPath = path.resolve(__dirname, 'backend', 'prisma', 'dev.db');
+  const dbPath = path.resolve(process.cwd(), 'backend', 'prisma', 'dev.db');
   process.env.DATABASE_URL = `file:${dbPath}`;
   const { PrismaClient } = eval("require")('./backend/node_modules/@prisma/client');
   return new PrismaClient();
