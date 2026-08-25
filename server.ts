@@ -1494,8 +1494,12 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { maxAge: '1d' }));
     app.get('*', (req, res) => {
+      if (req.path.startsWith('/assets/') || req.path.includes('.')) {
+        res.status(404).end();
+        return;
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
