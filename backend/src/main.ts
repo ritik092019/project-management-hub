@@ -80,6 +80,15 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
+  // Handle root pings and health checks from Render monitor
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.get('/', (_req: any, res: any) => {
+    res.json({ message: 'Team Project Hub API is running', health: `/${apiPrefix}/health`, docs: '/api/docs' });
+  });
+  expressApp.head('/', (_req: any, res: any) => {
+    res.status(200).end();
+  });
+
   await app.listen(port);
   logger.log(`🚀 NestJS Backend server listening on port http://localhost:${port}/${apiPrefix}`);
   logger.log(`📚 Swagger API Documentation available at http://localhost:${port}/api/docs`);
