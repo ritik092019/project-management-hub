@@ -17,7 +17,6 @@ for (const envFile of envPaths) {
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import https from 'https';
-import path from 'path';
 import jwt from 'jsonwebtoken';
 import { createServer as createViteServer } from 'vite';
 import { Project, User, UserRole, DashboardAnalytics, ProjectStatus, UnitTestResult, ApiTestSummary, ApprovalStatus, Comment, ReviewNote, ActivityItem, Notification } from './src/types.js';
@@ -1476,7 +1475,7 @@ app.post('/api/tests/run', (req: Request, res: Response) => {
 
 // Server & Vite Middleware setup
 async function startServer() {
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   const server = http.createServer(app);
 
   // Setup Gemini AI Chat, Low-Latency Flash-Lite, and Live API Voice WebSockets
