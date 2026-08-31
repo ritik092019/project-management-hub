@@ -310,11 +310,19 @@ export async function fetchProjects(params: ProjectFilterParams = {}): Promise<{
     query.set('tech', params.techStack.join(','));
   }
 
-  const res = await fetch(`${API_BASE}/projects?${query.toString()}`, {
+  let res = await fetch(`${API_BASE}/projects?${query.toString()}`, {
     headers: getAuthHeaders()
-  });
+  }).catch(() => null);
 
-  if (!res.ok) {
+  // If Render free tier is waking up (502/503/504 or network timeout), retry once after 2.5 seconds
+  if (!res || (!res.ok && (res.status === 502 || res.status === 503 || res.status === 504))) {
+    await new Promise((r) => setTimeout(r, 2500));
+    res = await fetch(`${API_BASE}/projects?${query.toString()}`, {
+      headers: getAuthHeaders()
+    }).catch(() => null);
+  }
+
+  if (!res || !res.ok) {
     throw new Error('Failed to fetch projects');
   }
 

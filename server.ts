@@ -57,11 +57,24 @@ async function proxyToNestJS(
     }
 
     const response = await fetchFn(targetUrl, options);
+    if (!response.ok && (response.status === 502 || response.status === 503 || response.status === 504)) {
+      // Backend is starting up on Render free tier — retry once after 2 seconds
+      await new Promise((r) => setTimeout(r, 2000));
+      const retryResp = await fetchFn(targetUrl, options).catch(() => null);
+      if (retryResp && retryResp.ok) {
+        const data = await retryResp.json().catch(() => ({}));
+        res.status(retryResp.status).json(data);
+        return true;
+      }
+      // Fall through to local Prisma handler if backend is still waking up
+      return false;
+    }
+
     const data = await response.json().catch(() => ({}));
     res.status(response.status).json(data);
     return true;
   } catch (err: any) {
-    // NestJS backend offline — fall through to legacy handler
+    // NestJS backend offline or starting up — fall through to legacy handler
     return false;
   }
 }
@@ -220,7 +233,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         };
         USERS.push(user);
       }
-    } catch (err) {}
+    } catch (err) { }
   }
 
   if (!user) {
